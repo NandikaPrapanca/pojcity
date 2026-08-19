@@ -108,5 +108,19 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->get('ownerships/(:num)', 'OwnershipController::show/$1');
         $routes->put('ownerships/(:num)', 'OwnershipController::update/$1');
         $routes->delete('ownerships/(:num)', 'OwnershipController::delete/$1');
+
+        // -- Meter Readings --
+        $routes->get('meter-readings', 'MeterReadingController::index');
+        $routes->post('meter-readings', 'MeterReadingController::create');
+        $routes->get('meter-readings/(:num)', 'MeterReadingController::show/$1');
+        $routes->put('meter-readings/(:num)', 'MeterReadingController::update/$1');
+        $routes->post('meter-readings/(:num)', 'MeterReadingController::update/$1');
+        $routes->delete('meter-readings/(:num)', 'MeterReadingController::delete/$1');
+        $routes->get('ownerships/(:num)/meter-readings', 'MeterReadingController::forOwnership/$1');
+        $routes->get('ownerships/(:num)/meter-readings/latest', 'MeterReadingController::latest/$1');
     });
+
+    // Public asset serving for uploaded meter photos
+    $routes->get('meter-readings/photo/(:segment)', 'MeterReadingController::servePhoto/$1');
 });
+
