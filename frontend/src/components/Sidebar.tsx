@@ -9,6 +9,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard',         to: '/dashboard',           icon: '◉' },
+  { label: 'Kepemilikan',       to: '/ownership',           icon: '🏠' },
   { label: 'Perusahaan',        to: '/master/company',      icon: '🏢' },
   { label: 'Customer',          to: '/master/customers',    icon: '👥' },
   { label: 'Proyek',            to: '/master/projects',     icon: '🏗' },

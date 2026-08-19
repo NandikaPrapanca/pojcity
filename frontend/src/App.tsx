@@ -14,6 +14,7 @@ import IplRatePage from '@/pages/master/IplRatePage'
 import WaterRateGroupPage from '@/pages/master/WaterRateGroupPage'
 import TaxConfigurationPage from '@/pages/master/TaxConfigurationPage'
 import SignaturePage from '@/pages/master/SignaturePage'
+import OwnershipPage from '@/pages/ownership/OwnershipPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +49,9 @@ export default function App() {
               <Route path="/master/water-rates" element={<WaterRateGroupPage />} />
               <Route path="/master/tax"         element={<TaxConfigurationPage />} />
               <Route path="/master/signatures"  element={<SignaturePage />} />
+
+              {/* Phase 3 — Ownership */}
+              <Route path="/ownership" element={<OwnershipPage />} />
             </Route>
           </Route>
 

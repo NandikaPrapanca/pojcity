@@ -101,5 +101,12 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->get('signatures/(:num)', 'SignatureController::show/$1');
         $routes->put('signatures/(:num)', 'SignatureController::update/$1');
         $routes->delete('signatures/(:num)', 'SignatureController::delete/$1');
+
+        // -- Ownerships --
+        $routes->get('ownerships', 'OwnershipController::index');
+        $routes->post('ownerships', 'OwnershipController::create');
+        $routes->get('ownerships/(:num)', 'OwnershipController::show/$1');
+        $routes->put('ownerships/(:num)', 'OwnershipController::update/$1');
+        $routes->delete('ownerships/(:num)', 'OwnershipController::delete/$1');
     });
 });
