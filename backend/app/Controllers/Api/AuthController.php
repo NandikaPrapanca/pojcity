@@ -2,11 +2,10 @@
 
 namespace App\Controllers\Api;
 
-use App\Controllers\BaseController;
 use App\Services\AuthService;
 use CodeIgniter\HTTP\ResponseInterface;
 
-class AuthController extends BaseController
+class AuthController extends BaseApiController
 {
     protected AuthService $authService;
 

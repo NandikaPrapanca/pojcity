@@ -4,6 +4,16 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
+import CompanyPage from '@/pages/master/CompanyPage'
+import CustomerPage from '@/pages/master/CustomerPage'
+import ProjectPage from '@/pages/master/ProjectPage'
+import ClusterPage from '@/pages/master/ClusterPage'
+import BlockPage from '@/pages/master/BlockPage'
+import LotPage from '@/pages/master/LotPage'
+import IplRatePage from '@/pages/master/IplRatePage'
+import WaterRateGroupPage from '@/pages/master/WaterRateGroupPage'
+import TaxConfigurationPage from '@/pages/master/TaxConfigurationPage'
+import SignaturePage from '@/pages/master/SignaturePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +36,18 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
-              {/* Future routes go here */}
+
+              {/* Phase 2 — Master Data */}
+              <Route path="/master/company"     element={<CompanyPage />} />
+              <Route path="/master/customers"   element={<CustomerPage />} />
+              <Route path="/master/projects"    element={<ProjectPage />} />
+              <Route path="/master/clusters"    element={<ClusterPage />} />
+              <Route path="/master/blocks"      element={<BlockPage />} />
+              <Route path="/master/lots"        element={<LotPage />} />
+              <Route path="/master/ipl-rates"   element={<IplRatePage />} />
+              <Route path="/master/water-rates" element={<WaterRateGroupPage />} />
+              <Route path="/master/tax"         element={<TaxConfigurationPage />} />
+              <Route path="/master/signatures"  element={<SignaturePage />} />
             </Route>
           </Route>
 

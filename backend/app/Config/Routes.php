@@ -16,5 +16,90 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
     $routes->group('', ['filter' => 'auth'], function ($routes) {
         $routes->get('auth/me', 'AuthController::me');
         $routes->post('auth/logout', 'AuthController::logout');
+
+        // ── Companies ────────────────────────────────────────────────────────
+        $routes->get('companies', 'CompanyController::index');
+        $routes->post('companies', 'CompanyController::create');
+        $routes->get('companies/(:num)', 'CompanyController::show/$1');
+        $routes->put('companies/(:num)', 'CompanyController::update/$1');
+        $routes->delete('companies/(:num)', 'CompanyController::delete/$1');
+
+        // ── Customers ────────────────────────────────────────────────────────
+        $routes->get('customers', 'CustomerController::index');
+        $routes->post('customers', 'CustomerController::create');
+        $routes->get('customers/(:num)', 'CustomerController::show/$1');
+        $routes->put('customers/(:num)', 'CustomerController::update/$1');
+        $routes->delete('customers/(:num)', 'CustomerController::delete/$1');
+
+        // ── PICs (nested under customers) ────────────────────────────────────
+        $routes->get('customers/(:num)/pics', 'PicController::index/$1');
+        $routes->post('customers/(:num)/pics', 'PicController::create/$1');
+        $routes->put('customers/(:num)/pics/(:num)', 'PicController::update/$1/$2');
+        $routes->delete('customers/(:num)/pics/(:num)', 'PicController::delete/$1/$2');
+
+        // ── Projects ─────────────────────────────────────────────────────────
+        $routes->get('projects', 'ProjectController::index');
+        $routes->post('projects', 'ProjectController::create');
+        $routes->get('projects/(:num)', 'ProjectController::show/$1');
+        $routes->put('projects/(:num)', 'ProjectController::update/$1');
+        $routes->delete('projects/(:num)', 'ProjectController::delete/$1');
+        $routes->get('projects/(:num)/clusters', 'ProjectController::clusters/$1');
+
+        // ── Clusters ─────────────────────────────────────────────────────────
+        $routes->get('clusters', 'ClusterController::index');
+        $routes->post('clusters', 'ClusterController::create');
+        $routes->get('clusters/(:num)', 'ClusterController::show/$1');
+        $routes->put('clusters/(:num)', 'ClusterController::update/$1');
+        $routes->delete('clusters/(:num)', 'ClusterController::delete/$1');
+        $routes->get('clusters/(:num)/blocks', 'ClusterController::blocks/$1');
+
+        // ── Blocks ───────────────────────────────────────────────────────────
+        $routes->get('blocks', 'BlockController::index');
+        $routes->post('blocks', 'BlockController::create');
+        $routes->get('blocks/(:num)', 'BlockController::show/$1');
+        $routes->put('blocks/(:num)', 'BlockController::update/$1');
+        $routes->delete('blocks/(:num)', 'BlockController::delete/$1');
+        $routes->get('blocks/(:num)/lots', 'BlockController::lots/$1');
+
+        // ── Lots ─────────────────────────────────────────────────────────────
+        $routes->get('lots', 'LotController::index');
+        $routes->post('lots', 'LotController::create');
+        $routes->get('lots/(:num)', 'LotController::show/$1');
+        $routes->put('lots/(:num)', 'LotController::update/$1');
+        $routes->delete('lots/(:num)', 'LotController::delete/$1');
+
+        // ── IPL Rates ────────────────────────────────────────────────────────
+        $routes->get('ipl-rates', 'IplRateController::index');
+        $routes->post('ipl-rates', 'IplRateController::create');
+        $routes->get('ipl-rates/(:num)', 'IplRateController::show/$1');
+        $routes->put('ipl-rates/(:num)', 'IplRateController::update/$1');
+        $routes->delete('ipl-rates/(:num)', 'IplRateController::delete/$1');
+
+        // ── Water Rate Groups ────────────────────────────────────────────────
+        $routes->get('water-rate-groups', 'WaterRateGroupController::index');
+        $routes->post('water-rate-groups', 'WaterRateGroupController::create');
+        $routes->get('water-rate-groups/(:num)', 'WaterRateGroupController::show/$1');
+        $routes->put('water-rate-groups/(:num)', 'WaterRateGroupController::update/$1');
+        $routes->delete('water-rate-groups/(:num)', 'WaterRateGroupController::delete/$1');
+        $routes->get('water-rate-groups/(:num)/tiers', 'WaterRateGroupController::tiers/$1');
+        $routes->post('water-rate-groups/(:num)/tiers', 'WaterRateTierController::createForGroup/$1');
+
+        // ── Water Rate Tiers ─────────────────────────────────────────────────
+        $routes->put('water-rate-tiers/(:num)', 'WaterRateTierController::update/$1');
+        $routes->delete('water-rate-tiers/(:num)', 'WaterRateTierController::delete/$1');
+
+        // ── Tax Configurations ───────────────────────────────────────────────
+        $routes->get('tax-configurations', 'TaxConfigurationController::index');
+        $routes->post('tax-configurations', 'TaxConfigurationController::create');
+        $routes->get('tax-configurations/(:num)', 'TaxConfigurationController::show/$1');
+        $routes->put('tax-configurations/(:num)', 'TaxConfigurationController::update/$1');
+        $routes->put('tax-configurations/(:num)/activate', 'TaxConfigurationController::activate/$1');
+
+        // ── Signatures ───────────────────────────────────────────────────────
+        $routes->get('signatures', 'SignatureController::index');
+        $routes->post('signatures', 'SignatureController::create');
+        $routes->get('signatures/(:num)', 'SignatureController::show/$1');
+        $routes->put('signatures/(:num)', 'SignatureController::update/$1');
+        $routes->delete('signatures/(:num)', 'SignatureController::delete/$1');
     });
 });

@@ -8,7 +8,17 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: '◉' },
+  { label: 'Dashboard',         to: '/dashboard',           icon: '◉' },
+  { label: 'Perusahaan',        to: '/master/company',      icon: '🏢' },
+  { label: 'Customer',          to: '/master/customers',    icon: '👥' },
+  { label: 'Proyek',            to: '/master/projects',     icon: '🏗' },
+  { label: 'Cluster',           to: '/master/clusters',     icon: '🗂' },
+  { label: 'Blok',              to: '/master/blocks',       icon: '📦' },
+  { label: 'Kavling',           to: '/master/lots',         icon: '📐' },
+  { label: 'Tarif IPL',         to: '/master/ipl-rates',    icon: '💰' },
+  { label: 'Tarif Air',         to: '/master/water-rates',  icon: '💧' },
+  { label: 'Pajak',             to: '/master/tax',          icon: '📊' },
+  { label: 'Tanda Tangan',      to: '/master/signatures',   icon: '✍' },
 ]
 
 export default function Sidebar() {
