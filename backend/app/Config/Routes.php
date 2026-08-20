@@ -118,6 +118,13 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->delete('meter-readings/(:num)', 'MeterReadingController::delete/$1');
         $routes->get('ownerships/(:num)/meter-readings', 'MeterReadingController::forOwnership/$1');
         $routes->get('ownerships/(:num)/meter-readings/latest', 'MeterReadingController::latest/$1');
+
+        // -- Billing Items (Phase 5A) --
+        $routes->get('billing-items', 'BillingController::index');
+        $routes->post('billing-items', 'BillingController::create');
+        $routes->get('billing-items/(:num)', 'BillingController::show/$1');
+        $routes->put('billing-items/(:num)', 'BillingController::update/$1');
+        $routes->delete('billing-items/(:num)', 'BillingController::delete/$1');
     });
 
     // Public asset serving for uploaded meter photos
