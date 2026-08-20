@@ -122,4 +122,43 @@ class BillingController extends BaseApiController
 
         return $this->success(null, 'Item tagihan berhasil dihapus/dibatalkan.');
     }
+
+    /**
+     * POST /api/v1/billing/generate-ipl
+     *
+     * Generate an IPL billing item automatically from ownership configuration.
+     *
+     * Request body:
+     * {
+     *   "ownership_id": 1,
+     *   "billing_period_start": "2026-07-01",
+     *   "billing_period_end":   "2026-08-01",
+     *   "notes": "optional"           ← optional
+     * }
+     *
+     * Response 201: Generated billing_items row (enriched with ownership relations)
+     * Response 422: Validation or business rule failure
+     */
+    public function generateIpl()
+    {
+        $body = $this->getBody();
+
+        $rules = [
+            'ownership_id'         => 'required|integer',
+            'billing_period_start' => 'required|valid_date',
+            'billing_period_end'   => 'required|valid_date',
+        ];
+
+        if (!$this->validateData($body, $rules)) {
+            return $this->validationError($this->validator->getErrors());
+        }
+
+        $result = $this->service->generateIpl($body);
+
+        if (!$result['success']) {
+            return $this->error($result['error'], null, 422);
+        }
+
+        return $this->success($result['data'], 'Tagihan IPL berhasil digenerate.', 201);
+    }
 }

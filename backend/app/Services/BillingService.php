@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Models\BillingItemModel;
 use App\Models\BillingItemTierModel;
 use App\Models\OwnershipModel;
+use App\Models\IplRateModel;
 
 class BillingService
 {
     protected BillingItemModel     $model;
     protected BillingItemTierModel $tierModel;
     protected OwnershipModel       $ownershipModel;
+    protected IplRateModel         $iplRateModel;
 
     protected array $allowedBillingTypes = ['ipl', 'water', 'electricity', 'other'];
     protected array $allowedStatuses     = ['draft', 'invoiced', 'cancelled'];
@@ -20,6 +22,7 @@ class BillingService
         $this->model          = new BillingItemModel();
         $this->tierModel      = new BillingItemTierModel();
         $this->ownershipModel = new OwnershipModel();
+        $this->iplRateModel   = new IplRateModel();
     }
 
     // ─── Read ─────────────────────────────────────────────────────────────────
@@ -172,6 +175,127 @@ class BillingService
         return ['success' => true, 'error' => null, 'data' => $this->model->findWithRelations($id)];
     }
 
+    // ─── IPL Billing Engine ───────────────────────────────────────────────────
+
+    /**
+     * Generate an IPL billing item from ownership configuration.
+     *
+     * Business logic:
+     *   1. Load and validate the ownership (must exist and not be soft-deleted).
+     *   2. Load the IPL rate referenced by ownership.ipl_rate_id (must exist, not deleted).
+     *   3. Validate area > 0.
+     *   4. Validate billing period.
+     *   5. Check for duplicate (same ownership + ipl + period).
+     *   6. Compute authoritative subtotal: area × rate_per_sqm (decimal-safe, rounded to 2dp).
+     *   7. Insert billing_item snapshot preserving rate and area at generation time.
+     *
+     * @param  array $data  Keys: ownership_id, billing_period_start, billing_period_end, notes?
+     * @return array        ['success' => bool, 'error' => string|null, 'data' => array|null]
+     */
+    public function generateIpl(array $data): array
+    {
+        // ── 1. Validate presence of required fields ────────────────────────────
+        if (empty($data['ownership_id'])) {
+            return ['success' => false, 'error' => 'Kepemilikan (ownership_id) wajib diisi.', 'data' => null];
+        }
+        if (empty($data['billing_period_start'])) {
+            return ['success' => false, 'error' => 'Tanggal awal periode wajib diisi.', 'data' => null];
+        }
+        if (empty($data['billing_period_end'])) {
+            return ['success' => false, 'error' => 'Tanggal akhir periode wajib diisi.', 'data' => null];
+        }
+
+        // ── 2. Validate date format ────────────────────────────────────────────
+        if (!$this->isValidDate($data['billing_period_start'])) {
+            return ['success' => false, 'error' => 'Format tanggal awal periode tidak valid (YYYY-MM-DD).', 'data' => null];
+        }
+        if (!$this->isValidDate($data['billing_period_end'])) {
+            return ['success' => false, 'error' => 'Format tanggal akhir periode tidak valid (YYYY-MM-DD).', 'data' => null];
+        }
+        if ($data['billing_period_end'] <= $data['billing_period_start']) {
+            return ['success' => false, 'error' => 'Tanggal akhir periode harus lebih besar dari tanggal awal periode.', 'data' => null];
+        }
+
+        // ── 3. Load and validate ownership ────────────────────────────────────
+        $ownership = $this->ownershipModel->find((int) $data['ownership_id']);
+        if (!$ownership) {
+            return ['success' => false, 'error' => 'Kepemilikan yang dipilih tidak valid atau tidak ditemukan.', 'data' => null];
+        }
+        // Guard soft-deleted (model uses soft deletes so find() skips deleted; extra guard for safety)
+        if (!empty($ownership['deleted_at'])) {
+            return ['success' => false, 'error' => 'Kepemilikan yang dipilih telah dihapus dan tidak dapat digunakan.', 'data' => null];
+        }
+
+        // ── 4. Load and validate IPL rate ─────────────────────────────────────
+        if (empty($ownership['ipl_rate_id'])) {
+            return ['success' => false, 'error' => 'Kepemilikan ini belum memiliki tarif IPL yang dikonfigurasi.', 'data' => null];
+        }
+
+        $iplRate = $this->iplRateModel->find((int) $ownership['ipl_rate_id']);
+        if (!$iplRate) {
+            return ['success' => false, 'error' => 'Tarif IPL yang dikonfigurasi untuk kepemilikan ini tidak valid atau telah dihapus.', 'data' => null];
+        }
+        if (!empty($iplRate['deleted_at'])) {
+            return ['success' => false, 'error' => 'Tarif IPL yang dikonfigurasi untuk kepemilikan ini telah dinonaktifkan.', 'data' => null];
+        }
+
+        // ── 5. Validate area ──────────────────────────────────────────────────
+        $area = (float) ($ownership['area'] ?? 0);
+        if ($area <= 0) {
+            return ['success' => false, 'error' => 'Luas area (area) kepemilikan harus lebih besar dari 0 m² untuk menghasilkan tagihan IPL.', 'data' => null];
+        }
+
+        // ── 6. Duplicate check ────────────────────────────────────────────────
+        $ownershipId   = (int) $ownership['id'];
+        $periodStart   = trim($data['billing_period_start']);
+        $periodEnd     = trim($data['billing_period_end']);
+
+        if ($this->checkDuplicate($ownershipId, 'ipl', $periodStart, $periodEnd)) {
+            return [
+                'success' => false,
+                'error'   => "Tagihan IPL untuk kepemilikan ini pada periode {$periodStart} s/d {$periodEnd} sudah ada. Tidak dapat membuat tagihan duplikat.",
+                'data'    => null,
+            ];
+        }
+
+        // ── 7. Authoritative backend calculation ──────────────────────────────
+        $ratePerSqm = (float) $iplRate['rate_per_sqm'];
+        $subtotal   = round($area * $ratePerSqm, 2);
+
+        // ── 8. Build description ──────────────────────────────────────────────
+        // Format the period for a human-readable description in Indonesian
+        $startYear  = date('Y', strtotime($periodStart));
+        $startMonth = $this->monthNameId(date('n', strtotime($periodStart)));
+        $description = "Iuran Pengelolaan Lingkungan (IPL) {$startMonth} {$startYear}";
+        if (!empty($data['description'])) {
+            $description = trim($data['description']);
+        }
+
+        // ── 9. Insert billing_item snapshot ──────────────────────────────────
+        $insertData = [
+            'ownership_id'         => $ownershipId,
+            'billing_type'         => 'ipl',
+            'billing_period_start' => $periodStart,
+            'billing_period_end'   => $periodEnd,
+            'description'          => $description,
+            'quantity'             => $area,        // Area m² is quantity
+            'unit'                 => 'm²',
+            'unit_price'           => $ratePerSqm,  // Snapshot of the rate at generation time
+            'subtotal'             => $subtotal,
+            'apply_tax'            => 1,
+            'notes'                => !empty($data['notes']) ? trim($data['notes']) : null,
+            'status'               => 'draft',
+        ];
+
+        $id = $this->model->insert($insertData, true);
+
+        return [
+            'success' => true,
+            'error'   => null,
+            'data'    => $this->model->findWithRelations((int) $id),
+        ];
+    }
+
     // ─── Delete / Cancel ──────────────────────────────────────────────────────
 
     public function delete(int $id): array
@@ -286,5 +410,19 @@ class BillingService
     {
         $d = \DateTime::createFromFormat('Y-m-d', $date);
         return $d && $d->format('Y-m-d') === $date;
+    }
+
+    /**
+     * Return the Indonesian month name for a given month number (1–12).
+     */
+    protected function monthNameId(int $month): string
+    {
+        $months = [
+            1  => 'Januari',  2  => 'Februari', 3  => 'Maret',
+            4  => 'April',    5  => 'Mei',       6  => 'Juni',
+            7  => 'Juli',     8  => 'Agustus',   9  => 'September',
+            10 => 'Oktober',  11 => 'November',  12 => 'Desember',
+        ];
+        return $months[$month] ?? 'Bulan';
     }
 }

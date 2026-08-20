@@ -125,6 +125,9 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->get('billing-items/(:num)', 'BillingController::show/$1');
         $routes->put('billing-items/(:num)', 'BillingController::update/$1');
         $routes->delete('billing-items/(:num)', 'BillingController::delete/$1');
+
+        // -- Billing Engine (Phase 5B) --
+        $routes->post('billing/generate-ipl', 'BillingController::generateIpl');
     });
 
     // Public asset serving for uploaded meter photos
