@@ -2,6 +2,7 @@ import React from 'react'
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
 interface Props {
   children: React.ReactNode
+  id?: string
   onClick?: () => void
   type?: 'button' | 'submit' | 'reset'
   variant?: Variant
@@ -17,10 +18,11 @@ const variants: Record<Variant, React.CSSProperties> = {
   ghost:     { backgroundColor: 'transparent', color: '#374151' },
 }
 const sizes = { sm: { padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }, md: { padding: '0.625rem 1rem', fontSize: '0.9375rem' } }
-export default function Button({ children, onClick, type = 'button', variant = 'primary', disabled, size = 'md', style }: Props) {
+export default function Button({ children, id, onClick, type = 'button', variant = 'primary', disabled, size = 'md', style }: Props) {
   return (
-    <button type={type} onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant], ...sizes[size], ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}), ...style }}>
+    <button id={id} type={type} onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant], ...sizes[size], ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}), ...style }}>
       {children}
     </button>
   )
 }
+

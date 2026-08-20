@@ -51,6 +51,8 @@ class CreateOwnershipsTable extends Migration
             'ipl_rate_id' => [
                 'type'     => 'BIGINT',
                 'unsigned' => true,
+                'null'     => true,
+                'default'  => null,
             ],
             'water_rate_group_id' => [
                 'type'     => 'BIGINT',

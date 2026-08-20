@@ -15,10 +15,24 @@ export interface BillingItemPayload {
   status?: 'draft' | 'invoiced' | 'cancelled'
 }
 
+/**
+ * Payload for the dedicated IPL generation endpoint.
+ * The backend derives area and rate from the ownership record —
+ * the frontend must NOT send rate or area.
+ */
+export interface IplGeneratePayload {
+  ownership_id: number
+  billing_period_start: string
+  billing_period_end: string
+  notes?: string | null
+}
+
 export const billingApi = {
   list: (params?: Record<string, unknown>) => api.get('/billing-items', { params }),
   get: (id: number) => api.get(`/billing-items/${id}`),
   create: (data: BillingItemPayload) => api.post('/billing-items', data),
   update: (id: number, data: Partial<BillingItemPayload>) => api.put(`/billing-items/${id}`, data),
   delete: (id: number) => api.delete(`/billing-items/${id}`),
+  /** POST /billing/generate-ipl — authoritative IPL generation from ownership config */
+  generateIpl: (data: IplGeneratePayload) => api.post('/billing/generate-ipl', data),
 }

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { billingApi, type BillingItemPayload } from '@/api/billingApi'
 import { ownershipApi } from '@/api/ownershipApi'
+// IplGeneratePayload is used by generateIpl mutation below
 import { useToast } from '@/hooks/useToast'
 import PageHeader from '@/components/ui/PageHeader'
 import Card from '@/components/ui/Card'
@@ -65,7 +66,23 @@ interface OwnershipOption {
   lot_number: string | null
   area: string | number | null
   billing_address: string | null
+  ipl_rate_id?: number | null
+  ipl_rate_name?: string | null
   ipl_rate_per_sqm?: string | number | null
+}
+
+interface IplGenForm {
+  ownership_id: string
+  billing_period_start: string
+  billing_period_end: string
+  notes: string
+}
+
+const emptyIplForm: IplGenForm = {
+  ownership_id: '',
+  billing_period_start: '',
+  billing_period_end: '',
+  notes: '',
 }
 
 interface FormState {
@@ -163,6 +180,13 @@ export default function BillingPage() {
   const [detailTarget, setDetailTarget] = useState<BillingItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BillingItem | null>(null)
 
+  // ─── Generate IPL Modal State ───────────────────────────────────────────────
+  const [iplModal, setIplModal] = useState(false)
+  const [iplForm, setIplForm] = useState<IplGenForm>(emptyIplForm)
+  const [iplErrors, setIplErrors] = useState<Record<string, string>>({})
+  const [iplServerError, setIplServerError] = useState<string | null>(null)
+  const [iplSuccess, setIplSuccess] = useState<BillingItem | null>(null)
+
   // Form State
   const [form, setForm] = useState<FormState>(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -232,6 +256,85 @@ export default function BillingPage() {
       showToast(errorObj.response?.data?.message || 'Gagal menghapus item tagihan.', 'error')
     },
   })
+
+  // ─── Generate IPL Mutation ───────────────────────────────────────────────────
+  const generateIplMutation = useMutation({
+    mutationFn: async () => {
+      return billingApi.generateIpl({
+        ownership_id: Number(iplForm.ownership_id),
+        billing_period_start: iplForm.billing_period_start,
+        billing_period_end: iplForm.billing_period_end,
+        notes: iplForm.notes.trim() || null,
+      })
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['billing-items'] })
+      setIplSuccess(res.data.data as BillingItem)
+      setIplServerError(null)
+    },
+    onError: (err: unknown) => {
+      const errorObj = err as { response?: { data?: { message?: string } } }
+      setIplServerError(errorObj.response?.data?.message || 'Gagal melakukan generate tagihan IPL.')
+    },
+  })
+
+  // ─── Generate IPL Handlers ───────────────────────────────────────────────────
+
+  const openIplModal = () => {
+    setIplForm(emptyIplForm)
+    setIplErrors({})
+    setIplServerError(null)
+    setIplSuccess(null)
+    setIplModal(true)
+  }
+
+  const closeIplModal = () => {
+    setIplModal(false)
+    setIplForm(emptyIplForm)
+    setIplErrors({})
+    setIplServerError(null)
+    setIplSuccess(null)
+  }
+
+  // Ownership selected in the IPL generate modal
+  const selectedIplOwnership = ownerships?.find((o) => String(o.id) === iplForm.ownership_id)
+
+  // Preview subtotal — display only, NOT the source of truth
+  const iplPreviewSubtotal =
+    selectedIplOwnership && selectedIplOwnership.ipl_rate_per_sqm && selectedIplOwnership.area
+      ? Number(selectedIplOwnership.area) * Number(selectedIplOwnership.ipl_rate_per_sqm)
+      : null
+
+  const handleIplGenerate = (e: React.FormEvent) => {
+    e.preventDefault()
+    setIplServerError(null)
+    const errs: Record<string, string> = {}
+
+    if (!iplForm.ownership_id) errs.ownership_id = 'Kepemilikan wajib dipilih.'
+    if (!iplForm.billing_period_start) errs.billing_period_start = 'Tanggal awal periode wajib diisi.'
+    if (!iplForm.billing_period_end) errs.billing_period_end = 'Tanggal akhir periode wajib diisi.'
+    if (
+      iplForm.billing_period_start &&
+      iplForm.billing_period_end &&
+      iplForm.billing_period_end <= iplForm.billing_period_start
+    ) {
+      errs.billing_period_end = 'Tanggal akhir harus lebih besar dari tanggal awal.'
+    }
+    if (
+      iplForm.ownership_id &&
+      selectedIplOwnership &&
+      !selectedIplOwnership.ipl_rate_per_sqm
+    ) {
+      errs.ownership_id = 'Kepemilikan ini belum memiliki tarif IPL yang dikonfigurasi.'
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setIplErrors(errs)
+      return
+    }
+    setIplErrors({})
+    generateIplMutation.mutate()
+  }
 
   // ─── Modal & Form Handlers ──────────────────────────────────────────────────
 
@@ -378,11 +481,29 @@ export default function BillingPage() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
 
       <PageHeader
-        title="Item Tagihan (Billing Foundation)"
+        title="Item Tagihan"
         subtitle="Kelola item tagihan (IPL, Air, Listrik, Lain-lain) sebelum proses penerbitan invoice."
         onAdd={openCreate}
-        addLabel="+ Tambah Item Tagihan"
+        addLabel="+ Tambah Manual"
       />
+
+      {/* ─── Generate IPL Quick Action Banner ────────────────────────────── */}
+      <div style={styles.iplBanner}>
+        <div style={styles.iplBannerLeft}>
+          <div style={styles.iplBannerTitle}>⚡ Generate Tagihan IPL</div>
+          <div style={styles.iplBannerDesc}>
+            Hitung otomatis: Luas Area × Tarif IPL dari konfigurasi Kepemilikan.
+            Backend adalah sumber kebenaran — tarif tidak bisa diubah manual.
+          </div>
+        </div>
+        <Button
+          id="btn-generate-ipl"
+          variant="primary"
+          onClick={openIplModal}
+        >
+          Generate Tagihan IPL
+        </Button>
+      </div>
 
       {/* Summary KPI Cards */}
       <div style={styles.kpiGrid}>
@@ -879,6 +1000,221 @@ export default function BillingPage() {
         )}
       </Modal>
 
+      {/* ─── Generate IPL Modal ───────────────────────────────────────────── */}
+      <Modal
+        open={iplModal}
+        title="Generate Tagihan IPL"
+        onClose={closeIplModal}
+        width={560}
+      >
+        {/* Success result screen */}
+        {iplSuccess ? (
+          <div style={styles.iplSuccessContainer}>
+            <div style={styles.iplSuccessIcon}>✅</div>
+            <div style={styles.iplSuccessTitle}>Tagihan IPL Berhasil Digenerate!</div>
+            <div style={styles.iplSuccessCard}>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Customer</span>
+                <span style={styles.iplSuccessVal}>{iplSuccess.customer_name || '-'}</span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Proyek</span>
+                <span style={styles.iplSuccessVal}>{iplSuccess.project_name || '-'}</span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Periode</span>
+                <span style={styles.iplSuccessVal}>
+                  {iplSuccess.billing_period_start} s/d {iplSuccess.billing_period_end}
+                </span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Area</span>
+                <span style={styles.iplSuccessVal}>{formatNumber(iplSuccess.quantity)} m²</span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Tarif IPL</span>
+                <span style={styles.iplSuccessVal}>{formatRupiah(iplSuccess.unit_price)} / m²</span>
+              </div>
+              <div style={{ ...styles.iplSuccessRow, ...styles.iplSuccessTotal }}>
+                <span>Subtotal (Authoritative Backend)</span>
+                <span>{formatRupiah(iplSuccess.subtotal)}</span>
+              </div>
+            </div>
+            <div style={styles.iplSuccessDesc}>{iplSuccess.description}</div>
+            <div style={styles.modalActions}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIplSuccess(null)
+                  setIplForm(emptyIplForm)
+                }}
+              >
+                Generate Lagi
+              </Button>
+              <Button variant="primary" onClick={closeIplModal}>
+                Selesai
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleIplGenerate} style={styles.form}>
+            {/* Server error */}
+            {iplServerError && (
+              <div style={styles.errorAlert} role="alert">
+                {iplServerError}
+              </div>
+            )}
+
+            {/* Step 1: Select Ownership */}
+            <div>
+              <label style={styles.label}>
+                Pilih Kepemilikan <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                id="ipl-ownership-select"
+                value={iplForm.ownership_id}
+                onChange={(e) => {
+                  setIplForm({ ...iplForm, ownership_id: e.target.value })
+                  setIplErrors({})
+                  setIplServerError(null)
+                }}
+                style={styles.nativeSelect}
+              >
+                <option value="">-- Pilih Kepemilikan / Customer --</option>
+                {(ownerships || []).map((o) => (
+                  <option key={o.id} value={String(o.id)}>
+                    {o.customer_name || 'Tanpa Nama'} —{' '}
+                    {o.ownership_type === 'residential'
+                      ? `${o.project_name || ''} (${o.cluster_name || ''} ${o.block_name || ''}/${o.lot_number || ''})`
+                      : `${o.project_name || ''} (${o.billing_address || 'Komersial'})`}
+                  </option>
+                ))}
+              </select>
+              {iplErrors.ownership_id && (
+                <span style={styles.fieldError}>{iplErrors.ownership_id}</span>
+              )}
+
+              {/* Ownership info panel — read-only */}
+              {selectedIplOwnership && (
+                <div style={styles.iplInfoPanel}>
+                  <div style={styles.iplInfoPanelTitle}>Informasi Kepemilikan</div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Customer</span>
+                    <span style={styles.iplInfoVal}>{selectedIplOwnership.customer_name || '-'}</span>
+                  </div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Proyek</span>
+                    <span style={styles.iplInfoVal}>
+                      {selectedIplOwnership.project_name || '-'}
+                      {selectedIplOwnership.ownership_type === 'residential' &&
+                        selectedIplOwnership.cluster_name
+                        ? ` · ${selectedIplOwnership.cluster_name} ${selectedIplOwnership.block_name || ''}/${selectedIplOwnership.lot_number || ''}`
+                        : ''}
+                    </span>
+                  </div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Luas Area</span>
+                    <span style={styles.iplInfoVal}>
+                      {selectedIplOwnership.area ? `${formatNumber(selectedIplOwnership.area)} m²` : '—'}
+                    </span>
+                  </div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Tarif IPL</span>
+                    <span style={styles.iplInfoVal}>
+                      {selectedIplOwnership.ipl_rate_per_sqm
+                        ? `${formatRupiah(selectedIplOwnership.ipl_rate_per_sqm)} / m²`
+                        : <span style={{ color: '#dc2626' }}>⚠️ Belum dikonfigurasi</span>
+                      }
+                    </span>
+                  </div>
+                  {selectedIplOwnership.ipl_rate_name && (
+                    <div style={styles.iplInfoRow}>
+                      <span style={styles.iplInfoLabel}>Nama Tarif</span>
+                      <span style={styles.iplInfoVal}>{selectedIplOwnership.ipl_rate_name}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Billing Period */}
+            <div style={styles.rowTwo}>
+              <div>
+                <label style={styles.label}>
+                  Tanggal Awal Periode <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <Input
+                  id="ipl-period-start"
+                  type="date"
+                  value={iplForm.billing_period_start}
+                  onChange={(e) => setIplForm({ ...iplForm, billing_period_start: e.target.value })}
+                />
+                {iplErrors.billing_period_start && (
+                  <span style={styles.fieldError}>{iplErrors.billing_period_start}</span>
+                )}
+              </div>
+              <div>
+                <label style={styles.label}>
+                  Tanggal Akhir Periode <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <Input
+                  id="ipl-period-end"
+                  type="date"
+                  value={iplForm.billing_period_end}
+                  onChange={(e) => setIplForm({ ...iplForm, billing_period_end: e.target.value })}
+                />
+                {iplErrors.billing_period_end && (
+                  <span style={styles.fieldError}>{iplErrors.billing_period_end}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Step 3: Preview (display only) */}
+            {selectedIplOwnership && iplPreviewSubtotal !== null && (
+              <div style={styles.iplPreviewBox}>
+                <div style={styles.iplPreviewTitle}>Preview Perhitungan (Tampilan Saja)</div>
+                <div style={styles.iplPreviewFormula}>
+                  {formatNumber(selectedIplOwnership.area)} m² ×{' '}
+                  {formatRupiah(selectedIplOwnership.ipl_rate_per_sqm)} / m²
+                </div>
+                <div style={styles.iplPreviewResult}>
+                  = {formatRupiah(iplPreviewSubtotal)}
+                </div>
+                <div style={styles.iplPreviewNotice}>
+                  * Subtotal final dan authoritative dihitung dan divalidasi oleh backend.
+                  Area dan tarif hanya dapat diubah melalui konfigurasi Kepemilikan.
+                </div>
+              </div>
+            )}
+
+            {/* Optional notes */}
+            <div>
+              <label style={styles.label}>Catatan Tambahan (Opsional)</label>
+              <Textarea
+                placeholder="Catatan internal untuk tagihan IPL ini..."
+                value={iplForm.notes}
+                onChange={(e) => setIplForm({ ...iplForm, notes: e.target.value })}
+                rows={2}
+              />
+            </div>
+
+            <div style={styles.modalActions}>
+              <Button type="button" variant="secondary" onClick={closeIplModal}>
+                Batal
+              </Button>
+              <Button
+                id="btn-submit-generate-ipl"
+                type="submit"
+                variant="primary"
+                disabled={generateIplMutation.isPending}
+              >
+                {generateIplMutation.isPending ? 'Memproses...' : 'Generate Tagihan IPL'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* ─── Delete Confirmation Dialog ───────────────────────────────────── */}
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -1194,5 +1530,162 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #e5e7eb',
     borderRadius: '6px',
     padding: '0.75rem',
+  },
+
+  // ─── Generate IPL styles ────────────────────────────────────────────────────
+  iplBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '1rem',
+    backgroundColor: '#f0fdf4',
+    border: '1px solid #86efac',
+    borderRadius: '8px',
+    padding: '1rem 1.25rem',
+  },
+  iplBannerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.25rem',
+  },
+  iplBannerTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  iplBannerDesc: {
+    fontSize: '0.8125rem',
+    color: '#166534',
+    opacity: 0.8,
+  },
+  iplInfoPanel: {
+    marginTop: '0.625rem',
+    backgroundColor: '#f8fafc',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.375rem',
+  },
+  iplInfoPanelTitle: {
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    marginBottom: '0.25rem',
+  },
+  iplInfoRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    fontSize: '0.8125rem',
+    gap: '0.5rem',
+  },
+  iplInfoLabel: {
+    color: '#64748b',
+    minWidth: '90px',
+  },
+  iplInfoVal: {
+    color: '#1e293b',
+    fontWeight: '600',
+    textAlign: 'right' as const,
+  },
+  iplPreviewBox: {
+    backgroundColor: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: '6px',
+    padding: '0.875rem',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.25rem',
+  },
+  iplPreviewTitle: {
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#1d4ed8',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.03em',
+  },
+  iplPreviewFormula: {
+    fontSize: '0.875rem',
+    color: '#374151',
+    marginTop: '0.125rem',
+  },
+  iplPreviewResult: {
+    fontSize: '1.125rem',
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  iplPreviewNotice: {
+    fontSize: '0.6875rem',
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginTop: '0.125rem',
+  },
+  iplSuccessContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: '0.875rem',
+    paddingBottom: '0.5rem',
+  },
+  iplSuccessIcon: {
+    fontSize: '2.5rem',
+    lineHeight: 1,
+  },
+  iplSuccessTitle: {
+    fontSize: '1.0625rem',
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  iplSuccessCard: {
+    width: '100%',
+    backgroundColor: '#f0fdf4',
+    border: '1px solid #86efac',
+    borderRadius: '8px',
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.5rem',
+  },
+  iplSuccessRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.875rem',
+    color: '#166534',
+  },
+  iplSuccessLabel: {
+    color: '#4ade80',
+    fontWeight: '500',
+  },
+  iplSuccessVal: {
+    fontWeight: '600',
+    color: '#14532d',
+    textAlign: 'right' as const,
+  },
+  iplSuccessTotal: {
+    borderTop: '1px solid #86efac',
+    paddingTop: '0.5rem',
+    marginTop: '0.25rem',
+    fontSize: '1rem',
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  iplSuccessDesc: {
+    fontSize: '0.8125rem',
+    color: '#4b5563',
+    fontStyle: 'italic',
+  },
+  nativeSelect: {
+    width: '100%',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    border: '1px solid #d1d5db',
+    fontSize: '0.875rem',
+    color: '#111827',
+    backgroundColor: '#ffffff',
+    outline: 'none',
   },
 }
