@@ -33,6 +33,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          {/* Base route redirect */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
 

@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useState } from 'react'
 
@@ -16,7 +16,21 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
   const isLoading = useAuthStore((s) => s.isLoading)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const token = useAuthStore((s) => s.token)
   const [serverError, setServerError] = useState<string | null>(null)
+
+  const hasToken = Boolean(
+    (token ?? localStorage.getItem('token')) &&
+    (token ?? localStorage.getItem('token')) !== 'undefined' &&
+    (token ?? localStorage.getItem('token')) !== 'null' &&
+    (token ?? localStorage.getItem('token'))?.trim() !== ''
+  )
+
+  // If already authenticated with a valid token, redirect to /dashboard
+  if (isAuthenticated && hasToken) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   const {
     register,

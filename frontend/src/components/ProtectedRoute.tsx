@@ -1,24 +1,40 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 
+interface ProtectedRouteProps {
+  children?: React.ReactNode
+}
+
 /**
  * Wraps protected routes. If the user is not authenticated, redirects to /login.
- * On first load, verifies the stored token against /auth/me.
+ * On hard refresh, verifies the stored token against /auth/me.
  */
-export default function ProtectedRoute() {
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, token, fetchMe } = useAuthStore()
-  const [checking, setChecking] = useState(true)
+  const rawToken = token ?? localStorage.getItem('token')
+  const hasToken = Boolean(
+    rawToken && rawToken !== 'undefined' && rawToken !== 'null' && rawToken.trim() !== ''
+  )
+
+  // If already authenticated (e.g. freshly logged in), no need to wait/check.
+  // Only enter checking state on hard refresh when token exists but store is not hydrated.
+  const [checking, setChecking] = useState<boolean>(() => hasToken && !isAuthenticated)
 
   useEffect(() => {
-    // If we have a stored token, verify it's still valid
-    if (token) {
+    if (hasToken && !isAuthenticated) {
       fetchMe().finally(() => setChecking(false))
     } else {
       setChecking(false)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasToken, isAuthenticated, fetchMe])
 
+  // If no token exists at all, immediately redirect to /login
+  if (!hasToken) {
+    return <Navigate to="/login" replace />
+  }
+
+  // If checking token validity against the server on initial hard refresh
   if (checking) {
     return (
       <div
@@ -39,9 +55,11 @@ export default function ProtectedRoute() {
     )
   }
 
+  // If unauthenticated after checking
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 
-  return <Outlet />
+  return children ? <>{children}</> : <Outlet />
 }
+

@@ -18,10 +18,19 @@ interface AuthState {
   fetchMe: () => Promise<void>
 }
 
+const rawToken = localStorage.getItem('token')
+const isValidToken = Boolean(
+  rawToken && rawToken !== 'undefined' && rawToken !== 'null' && rawToken.trim() !== ''
+)
+
+if (isValidToken && rawToken) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${rawToken}`
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  token: isValidToken ? rawToken : null,
+  isAuthenticated: isValidToken,
   isLoading: false,
 
   login: async (email: string, password: string) => {
@@ -30,6 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await api.post('/auth/login', { email, password })
       const { token, user } = response.data.data
       localStorage.setItem('token', token)
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
       set({ user, token, isAuthenticated: true, isLoading: false })
     } catch (error) {
       set({ isLoading: false })
@@ -47,6 +57,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Ignore logout API errors — always clear local state
     } finally {
       localStorage.removeItem('token')
+      delete api.defaults.headers.common['Authorization']
       set({ user: null, token: null, isAuthenticated: false })
     }
   },
@@ -54,16 +65,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   fetchMe: async () => {
     const token = get().token ?? localStorage.getItem('token')
     if (!token) {
+      delete api.defaults.headers.common['Authorization']
       set({ isAuthenticated: false })
       return
     }
     try {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
       const response = await api.get('/auth/me')
       const user = response.data.data.user
       set({ user, isAuthenticated: true })
     } catch {
       localStorage.removeItem('token')
+      delete api.defaults.headers.common['Authorization']
       set({ user: null, token: null, isAuthenticated: false })
     }
   },
 }))
+
