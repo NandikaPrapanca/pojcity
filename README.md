@@ -244,14 +244,15 @@ npm run dev
 
 ## Default Login Credentials
 
-Use the pre-seeded account to evaluate the application:
+Login URL: **`http://localhost:5173/login`**
 
-| Attribute | Value |
-|---|---|
-| **URL** | `http://localhost:5173/login` |
-| **Email** | `dev@ipu-billing.local` |
-| **Password** | `dev_password_change_me` |
-| **Role** | `developer` (Full System Administrator) |
+Use any of the pre-seeded demo accounts to evaluate the application:
+
+| Name | Email | Password | Role |
+|---|---|---|---|
+| **Developer** | `dev@demo.com` | `dev123` | Developer (`role_id: 1`) |
+| **Admin Satu** | `admin1@demo.com` | `admin123` | Admin (`role_id: 2`) |
+| **Admin Dua** | `admin2@demo.com` | `admin123` | Admin (`role_id: 2`) |
 
 ---
 

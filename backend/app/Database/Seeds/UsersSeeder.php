@@ -8,21 +8,48 @@ class UsersSeeder extends Seeder
 {
     public function run()
     {
-        // Password is loaded from environment or falls back to dev default.
-        // NEVER use this password in production.
-        $devPassword = env('DEV_SEED_PASSWORD') ?: 'dev_password_change_me';
-        $hash        = password_hash($devPassword, PASSWORD_BCRYPT);
-        $now         = date('Y-m-d H:i:s');
+        $now = date('Y-m-d H:i:s');
 
-        // Use UPSERT so this seeder is idempotent — safe to re-run after tests
-        // without throwing a duplicate key error.
-        $this->db->query(
-            "INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
-             VALUES (?, 'dev@ipu-billing.local', ?, 1, 1, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                 password   = VALUES(password),
-                 updated_at = VALUES(updated_at)",
-            ['Developer', $hash, $now, $now]
-        );
+        $users = [
+            [
+                'name'     => 'Developer',
+                'email'    => 'dev@demo.com',
+                'password' => password_hash('dev123', PASSWORD_BCRYPT),
+                'role_id'  => 1,
+            ],
+            [
+                'name'     => 'Admin Satu',
+                'email'    => 'admin1@demo.com',
+                'password' => password_hash('admin123', PASSWORD_BCRYPT),
+                'role_id'  => 2,
+            ],
+            [
+                'name'     => 'Admin Dua',
+                'email'    => 'admin2@demo.com',
+                'password' => password_hash('admin123', PASSWORD_BCRYPT),
+                'role_id'  => 2,
+            ],
+        ];
+
+        foreach ($users as $user) {
+            $this->db->query(
+                "INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 1, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                     name       = VALUES(name),
+                     password   = VALUES(password),
+                     role_id    = VALUES(role_id),
+                     is_active  = VALUES(is_active),
+                     updated_at = VALUES(updated_at)",
+                [
+                    $user['name'],
+                    $user['email'],
+                    $user['password'],
+                    $user['role_id'],
+                    $now,
+                    $now,
+                ]
+            );
+        }
     }
 }
