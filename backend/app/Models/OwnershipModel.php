@@ -97,46 +97,51 @@ class OwnershipModel extends Model
     {
         // Customer
         $customer = $this->db->table('customers')->where('id', $row['customer_id'])->get()->getRowArray();
-        $row['customer_name'] = $customer['name'] ?? null;
+        $row['customer_name'] = is_array($customer) ? ($customer['name'] ?? null) : null;
 
         // Project
         $project = $this->db->table('projects')->where('id', $row['project_id'])->get()->getRowArray();
-        $row['project_name'] = $project['name'] ?? null;
-        $row['project_type'] = $project['project_type'] ?? null;
+        $row['project_name'] = is_array($project) ? ($project['name'] ?? null) : null;
+        $row['project_type'] = is_array($project) ? ($project['project_type'] ?? null) : null;
 
         // Cluster
-        if ($row['cluster_id']) {
+        if (!empty($row['cluster_id'])) {
             $cluster = $this->db->table('clusters')->where('id', $row['cluster_id'])->get()->getRowArray();
-            $row['cluster_name'] = $cluster['name'] ?? null;
+            $row['cluster_name'] = is_array($cluster) ? ($cluster['name'] ?? null) : null;
         } else {
             $row['cluster_name'] = null;
         }
 
         // Block
-        if ($row['block_id']) {
+        if (!empty($row['block_id'])) {
             $block = $this->db->table('blocks')->where('id', $row['block_id'])->get()->getRowArray();
-            $row['block_name'] = $block['name'] ?? null;
+            $row['block_name'] = is_array($block) ? ($block['name'] ?? null) : null;
         } else {
             $row['block_name'] = null;
         }
 
         // Lot
-        if ($row['lot_id']) {
+        if (!empty($row['lot_id'])) {
             $lot = $this->db->table('lots')->where('id', $row['lot_id'])->get()->getRowArray();
-            $row['lot_number'] = $lot['lot_number'] ?? null;
+            $row['lot_number'] = is_array($lot) ? ($lot['lot_number'] ?? null) : null;
         } else {
             $row['lot_number'] = null;
         }
 
         // IPL Rate
-        $ipl = $this->db->table('ipl_rates')->where('id', $row['ipl_rate_id'])->get()->getRowArray();
-        $row['ipl_rate_name']    = $ipl['name'] ?? null;
-        $row['ipl_rate_per_sqm'] = $ipl['rate_per_sqm'] ?? null;
+        if (!empty($row['ipl_rate_id'])) {
+            $ipl = $this->db->table('ipl_rates')->where('id', $row['ipl_rate_id'])->get()->getRowArray();
+            $row['ipl_rate_name']    = is_array($ipl) ? ($ipl['name'] ?? null) : null;
+            $row['ipl_rate_per_sqm'] = is_array($ipl) ? ($ipl['rate_per_sqm'] ?? null) : null;
+        } else {
+            $row['ipl_rate_name']    = null;
+            $row['ipl_rate_per_sqm'] = null;
+        }
 
         // Water Rate Group
-        if ($row['water_rate_group_id']) {
+        if (!empty($row['water_rate_group_id'])) {
             $wg = $this->db->table('water_rate_groups')->where('id', $row['water_rate_group_id'])->get()->getRowArray();
-            $row['water_rate_group_name'] = $wg['name'] ?? null;
+            $row['water_rate_group_name'] = is_array($wg) ? ($wg['name'] ?? null) : null;
         } else {
             $row['water_rate_group_name'] = null;
         }

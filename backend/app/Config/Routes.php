@@ -17,6 +17,9 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->get('auth/me', 'AuthController::me');
         $routes->post('auth/logout', 'AuthController::logout');
 
+        // ── Dashboard ─────────────────────────────────────────────────────────
+        $routes->get('dashboard/summary', 'DashboardController::summary');
+
         // ── Companies ────────────────────────────────────────────────────────
         $routes->get('companies', 'CompanyController::index');
         $routes->post('companies', 'CompanyController::create');
@@ -100,6 +103,7 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->post('signatures', 'SignatureController::create');
         $routes->get('signatures/(:num)', 'SignatureController::show/$1');
         $routes->put('signatures/(:num)', 'SignatureController::update/$1');
+        $routes->post('signatures/(:num)', 'SignatureController::update/$1');
         $routes->delete('signatures/(:num)', 'SignatureController::delete/$1');
 
         // -- Ownerships --
@@ -126,8 +130,25 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], function ($rout
         $routes->put('billing-items/(:num)', 'BillingController::update/$1');
         $routes->delete('billing-items/(:num)', 'BillingController::delete/$1');
 
-        // -- Billing Engine (Phase 5B) --
-        $routes->post('billing/generate-ipl', 'BillingController::generateIpl');
+        // -- Billing Engine (Phase 5B / 5C) --
+        $routes->post('billing/generate-ipl',   'BillingController::generateIpl');
+        $routes->post('billing/generate-water',  'BillingController::generateWater');
+
+        // ── Invoices (Phase 6 / 7 / 9) ────────────────────────────────────────────
+        $routes->get('invoices',                         'InvoiceController::index');
+        $routes->get('invoices/(:num)',                  'InvoiceController::show/$1');
+        $routes->get('invoices/(:num)/pdf',              'InvoiceController::downloadPdf/$1');
+        $routes->get('invoices/(:num)/receipt',          'InvoiceController::downloadReceipt/$1');
+        $routes->post('invoices/(:num)/send-whatsapp',  'InvoiceController::sendWhatsApp/$1');
+        $routes->post('invoices/preview-tax',            'InvoiceController::previewTax');
+        $routes->post('invoices/generate',               'InvoiceController::generate');
+
+        // ── Payments (Phase 9) ────────────────────────────────────────────────
+        $routes->post('payments',                        'PaymentController::create');
+        $routes->get('payments/invoice/(:num)',          'PaymentController::getForInvoice/$1');
+
+        // ── Reports & Exports (Phase 10) ──────────────────────────────────────
+        $routes->get('reports/export-invoices',          'ReportController::exportInvoices');
     });
 
     // Public asset serving for uploaded meter photos

@@ -47,7 +47,7 @@ class CustomerController extends BaseApiController
         // Attach first company as default if not provided
         if (empty($body['company_id'])) {
             $company = (new \App\Models\CompanyModel())->first();
-            $body['company_id'] = $company['id'] ?? 1;
+            $body['company_id'] = (is_array($company) && !empty($company['id'])) ? (int)$company['id'] : 1;
         }
 
         $fields = ['company_id','name','customer_type','nik','npwp','whatsapp','email','billing_address','notes'];

@@ -6,6 +6,9 @@ use App\Models\BillingItemModel;
 use App\Models\BillingItemTierModel;
 use App\Models\OwnershipModel;
 use App\Models\IplRateModel;
+use App\Models\WaterRateGroupModel;
+use App\Models\WaterRateTierModel;
+use App\Models\MeterReadingModel;
 
 class BillingService
 {
@@ -13,16 +16,22 @@ class BillingService
     protected BillingItemTierModel $tierModel;
     protected OwnershipModel       $ownershipModel;
     protected IplRateModel         $iplRateModel;
+    protected WaterRateGroupModel  $waterRateGroupModel;
+    protected WaterRateTierModel   $waterRateTierModel;
+    protected MeterReadingModel    $meterReadingModel;
 
     protected array $allowedBillingTypes = ['ipl', 'water', 'electricity', 'other'];
     protected array $allowedStatuses     = ['draft', 'invoiced', 'cancelled'];
 
     public function __construct()
     {
-        $this->model          = new BillingItemModel();
-        $this->tierModel      = new BillingItemTierModel();
-        $this->ownershipModel = new OwnershipModel();
-        $this->iplRateModel   = new IplRateModel();
+        $this->model               = new BillingItemModel();
+        $this->tierModel           = new BillingItemTierModel();
+        $this->ownershipModel      = new OwnershipModel();
+        $this->iplRateModel        = new IplRateModel();
+        $this->waterRateGroupModel = new WaterRateGroupModel();
+        $this->waterRateTierModel  = new WaterRateTierModel();
+        $this->meterReadingModel   = new MeterReadingModel();
     }
 
     // ─── Read ─────────────────────────────────────────────────────────────────
@@ -293,6 +302,232 @@ class BillingService
             'success' => true,
             'error'   => null,
             'data'    => $this->model->findWithRelations((int) $id),
+        ];
+    }
+
+    // ─── Water Billing Engine ─────────────────────────────────────────────────
+
+    /**
+     * Generate a Water billing item from ownership + latest meter reading + water rate group.
+     *
+     * Business logic:
+     *   1. Validate required fields and date format.
+     *   2. Load and validate ownership (must exist, not soft-deleted).
+     *   3. Validate ownership has an active water_rate_group_id.
+     *   4. Load latest meter reading for ownership (must exist, not soft-deleted).
+     *   5. Validate usage: current_reading >= previous_reading.
+     *   6. Load water rate tiers (ordered by min_usage ASC).
+     *   7. Run progressive tier calculation.
+     *   8. Add abonemen from the water rate group.
+     *   9. Duplicate check (same ownership + water + period).
+     *  10. Insert billing_item snapshot + billing_item_tiers records.
+     *
+     * @param  array $data  Keys: ownership_id, billing_period_start, billing_period_end
+     * @return array        ['success' => bool, 'error' => string|null, 'data' => array|null]
+     */
+    public function generateWater(array $data): array
+    {
+        // ── 1. Validate required fields ───────────────────────────────────────
+        if (empty($data['ownership_id'])) {
+            return ['success' => false, 'error' => 'Kepemilikan (ownership_id) wajib diisi.', 'data' => null];
+        }
+        if (empty($data['billing_period_start'])) {
+            return ['success' => false, 'error' => 'Tanggal awal periode wajib diisi.', 'data' => null];
+        }
+        if (empty($data['billing_period_end'])) {
+            return ['success' => false, 'error' => 'Tanggal akhir periode wajib diisi.', 'data' => null];
+        }
+        if (!$this->isValidDate($data['billing_period_start'])) {
+            return ['success' => false, 'error' => 'Format tanggal awal periode tidak valid (YYYY-MM-DD).', 'data' => null];
+        }
+        if (!$this->isValidDate($data['billing_period_end'])) {
+            return ['success' => false, 'error' => 'Format tanggal akhir periode tidak valid (YYYY-MM-DD).', 'data' => null];
+        }
+        if ($data['billing_period_end'] <= $data['billing_period_start']) {
+            return ['success' => false, 'error' => 'Tanggal akhir periode harus lebih besar dari tanggal awal periode.', 'data' => null];
+        }
+
+        // ── 2. Load and validate ownership ────────────────────────────────────
+        $ownership = $this->ownershipModel->find((int) $data['ownership_id']);
+        if (!$ownership) {
+            return ['success' => false, 'error' => 'Kepemilikan yang dipilih tidak valid atau tidak ditemukan.', 'data' => null];
+        }
+        if (!empty($ownership['deleted_at'])) {
+            return ['success' => false, 'error' => 'Kepemilikan yang dipilih telah dihapus dan tidak dapat digunakan.', 'data' => null];
+        }
+
+        $ownershipId = (int) $ownership['id'];
+        $periodStart = trim($data['billing_period_start']);
+        $periodEnd   = trim($data['billing_period_end']);
+
+        // ── 3. Validate water rate group ──────────────────────────────────────
+        if (empty($ownership['water_rate_group_id'])) {
+            return ['success' => false, 'error' => 'Kepemilikan ini belum memiliki Kelompok Tarif Air yang dikonfigurasi.', 'data' => null];
+        }
+
+        $waterGroup = $this->waterRateGroupModel->find((int) $ownership['water_rate_group_id']);
+        if (!$waterGroup) {
+            return ['success' => false, 'error' => 'Kelompok Tarif Air yang dikonfigurasi tidak valid atau telah dihapus.', 'data' => null];
+        }
+        if (!empty($waterGroup['deleted_at'])) {
+            return ['success' => false, 'error' => 'Kelompok Tarif Air yang dikonfigurasi telah dinonaktifkan.', 'data' => null];
+        }
+
+        // ── 4. Load latest meter reading ──────────────────────────────────────
+        $reading = $this->meterReadingModel->getLatestForOwnership($ownershipId);
+        if (!$reading) {
+            return ['success' => false, 'error' => 'Tidak ditemukan data meter reading yang valid untuk kepemilikan ini. Pastikan data meter sudah diinput terlebih dahulu.', 'data' => null];
+        }
+
+        // ── 5. Validate usage (current_reading >= previous_reading) ───────────
+        $currentReading  = (float) $reading['current_reading'];
+        $previousReading = (float) $reading['previous_reading'];
+        $usage           = round($currentReading - $previousReading, 2);
+
+        if ($currentReading < $previousReading) {
+            return [
+                'success' => false,
+                'error'   => "Data meter reading tidak valid: angka current ({$currentReading}) lebih kecil dari previous ({$previousReading}). Tagihan air tidak dapat digenerate.",
+                'data'    => null,
+            ];
+        }
+
+        if ($usage <= 0) {
+            return ['success' => false, 'error' => 'Pemakaian air (usage) harus lebih besar dari 0 m³.', 'data' => null];
+        }
+
+        // ── 6. Load water rate tiers ──────────────────────────────────────────
+        $tiers = $this->waterRateTierModel
+            ->where('water_rate_group_id', (int) $waterGroup['id'])
+            ->orderBy('min_usage', 'ASC')
+            ->findAll();
+
+        if (empty($tiers)) {
+            return ['success' => false, 'error' => 'Kelompok Tarif Air tidak memiliki tier/level harga yang dikonfigurasi.', 'data' => null];
+        }
+
+        // ── 7. Progressive tier calculation ───────────────────────────────────
+        $remainingUsage = $usage;
+        $usageCost      = 0.0;
+        $tierSnapshots  = [];
+
+        foreach ($tiers as $tier) {
+            if ($remainingUsage <= 0) {
+                break;
+            }
+
+            $minUsage  = (float) $tier['min_usage'];
+            $maxUsage  = $tier['max_usage'] !== null ? (float) $tier['max_usage'] : null;
+            $ratePerM3 = (float) $tier['rate_per_m3'];
+
+            // Tier width: if max_usage is NULL, this is the open-ended final tier
+            if ($maxUsage !== null) {
+                $tierWidth   = $maxUsage - $minUsage;
+                $usageInTier = min($remainingUsage, $tierWidth);
+            } else {
+                // Open-ended final tier: all remaining usage goes here
+                $tierWidth   = null;
+                $usageInTier = $remainingUsage;
+            }
+
+            $tierAmount = round($usageInTier * $ratePerM3, 2);
+            $usageCost += $tierAmount;
+            $remainingUsage -= $usageInTier;
+
+            // Build label: e.g. "0–20 m³ @ Rp7.500/m³"
+            $maxLabel = $maxUsage !== null ? number_format($maxUsage, 0, ',', '.') : '∞';
+            $tierLabel = number_format($minUsage, 0, ',', '.') . '–' . $maxLabel . ' m³ @ Rp' . number_format($ratePerM3, 0, ',', '.') . '/m³';
+
+            $tierSnapshots[] = [
+                'tier_label'    => $tierLabel,
+                'usage_in_tier' => round($usageInTier, 2),
+                'rate'          => $ratePerM3,
+                'amount'        => $tierAmount,
+            ];
+        }
+
+        $usageCost = round($usageCost, 2);
+
+        // ── 8. Add abonemen ───────────────────────────────────────────────────
+        $abonemen = (float) ($waterGroup['abonemen'] ?? 0);
+        $subtotal  = round($usageCost + $abonemen, 2);
+
+        // ── 9. Duplicate check ────────────────────────────────────────────────
+        if ($this->checkDuplicate($ownershipId, 'water', $periodStart, $periodEnd)) {
+            return [
+                'success' => false,
+                'error'   => "Tagihan Air untuk kepemilikan ini pada periode {$periodStart} s/d {$periodEnd} sudah ada. Tidak dapat membuat tagihan duplikat.",
+                'data'    => null,
+            ];
+        }
+
+        // ── 10. Build description ─────────────────────────────────────────────
+        $startYear  = date('Y', strtotime($periodStart));
+        $startMonth = $this->monthNameId(date('n', strtotime($periodStart)));
+        $description = "Tagihan Air {$startMonth} {$startYear}";
+        if (!empty($data['description'])) {
+            $description = trim($data['description']);
+        }
+
+        // ── 11. Insert billing_item snapshot ──────────────────────────────────
+        // For water billing:
+        //   quantity   = usage in m³
+        //   unit_price = effective average cost per m³ (usageCost / usage, for record keeping)
+        //   subtotal   = usageCost + abonemen  (authoritative)
+        //   notes      = includes abonemen and water group name for audit
+        $avgRate   = $usage > 0 ? round($usageCost / $usage, 4) : 0;
+        $auditNote = "Pemakaian: {$usage} m³ | Abonemen: Rp" . number_format($abonemen, 0, ',', '.') . " | Tarif: {$waterGroup['name']}";
+        if (!empty($data['notes'])) {
+            $auditNote .= ' | ' . trim($data['notes']);
+        }
+
+        $insertData = [
+            'ownership_id'         => $ownershipId,
+            'billing_type'         => 'water',
+            'billing_period_start' => $periodStart,
+            'billing_period_end'   => $periodEnd,
+            'meter_reading_id'     => (int) $reading['id'],
+            'description'          => $description,
+            'quantity'             => $usage,          // m³ used — snapshot
+            'unit'                 => 'm³',
+            'unit_price'           => $avgRate,        // avg Rp/m³ for record
+            'subtotal'             => $subtotal,       // authoritative: usageCost + abonemen
+            'apply_tax'            => 1,
+            'notes'                => $auditNote,
+            'status'               => 'draft',
+        ];
+
+        $billingItemId = $this->model->insert($insertData, true);
+
+        // ── 12. Insert billing_item_tiers snapshots ───────────────────────────
+        $now = date('Y-m-d H:i:s');
+        foreach ($tierSnapshots as $snap) {
+            $this->tierModel->insert([
+                'billing_item_id' => (int) $billingItemId,
+                'tier_label'      => $snap['tier_label'],
+                'usage_in_tier'   => $snap['usage_in_tier'],
+                'rate'            => $snap['rate'],
+                'amount'          => $snap['amount'],
+                'created_at'      => $now,
+            ]);
+        }
+
+        // Also insert the abonemen as a separate tier record for full auditability
+        if ($abonemen > 0) {
+            $this->tierModel->insert([
+                'billing_item_id' => (int) $billingItemId,
+                'tier_label'      => 'Abonemen',
+                'usage_in_tier'   => 0,
+                'rate'            => $abonemen,
+                'amount'          => $abonemen,
+                'created_at'      => $now,
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'error'   => null,
+            'data'    => $this->model->findWithRelations((int) $billingItemId),
         ];
     }
 

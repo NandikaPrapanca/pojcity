@@ -161,4 +161,42 @@ class BillingController extends BaseApiController
 
         return $this->success($result['data'], 'Tagihan IPL berhasil digenerate.', 201);
     }
+    /**
+     * POST /api/v1/billing/generate-water
+     *
+     * Generate a Water billing item automatically from:
+     *   ownership → latest meter reading → water rate group → progressive tier calc + abonemen
+     *
+     * Request body:
+     * {
+     *   "ownership_id": 1,
+     *   "billing_period_start": "2026-07-01",
+     *   "billing_period_end":   "2026-08-01"
+     * }
+     *
+     * Response 201: Generated billing_items row (enriched with ownership relations + tiers)
+     * Response 422: Validation or business rule failure
+     */
+    public function generateWater()
+    {
+        $body = $this->getBody();
+
+        $rules = [
+            'ownership_id'         => 'required|integer',
+            'billing_period_start' => 'required|valid_date',
+            'billing_period_end'   => 'required|valid_date',
+        ];
+
+        if (!$this->validateData($body, $rules)) {
+            return $this->validationError($this->validator->getErrors());
+        }
+
+        $result = $this->service->generateWater($body);
+
+        if (!$result['success']) {
+            return $this->error($result['error'], null, 422);
+        }
+
+        return $this->success($result['data'], 'Tagihan Air berhasil digenerate.', 201);
+    }
 }

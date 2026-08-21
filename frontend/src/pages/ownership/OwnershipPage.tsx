@@ -104,70 +104,113 @@ export default function OwnershipPage() {
   if (filterType) listParams.ownership_type = filterType
   if (filterCustomer) listParams.search = filterCustomer
 
-  const { data: ownerships, isLoading } = useQuery({
+  const { data: rawOwnerships, isLoading } = useQuery({
     queryKey: ['ownerships', listParams],
-    queryFn: () => ownershipApi.list(listParams).then(r => r.data.data as Ownership[]),
+    queryFn: async () => {
+      const res = await ownershipApi.list(listParams)
+      const d = res.data?.data
+      if (Array.isArray(d)) return d as Ownership[]
+      if (Array.isArray(res.data)) return res.data as Ownership[]
+      if (d && Array.isArray((d as any).data)) return (d as any).data as Ownership[]
+      return [] as Ownership[]
+    },
   })
+  const ownerships = Array.isArray(rawOwnerships) ? rawOwnerships : []
 
   // ── Master data for form selects ─────────────────────────────────────────────
-  const { data: customers } = useQuery({
+  const { data: rawCustomers } = useQuery({
     queryKey: ['customers', {}],
-    queryFn: () => customerApi.list({}).then(r => (r.data.data as {id:number;name:string}[]) ?? []),
+    queryFn: async () => {
+      const res = await customerApi.list({})
+      const d = res.data?.data
+      if (Array.isArray(d)) return d as { id: number; name: string }[]
+      if (Array.isArray(res.data)) return res.data as { id: number; name: string }[]
+      if (d && Array.isArray((d as any).data)) return (d as any).data as { id: number; name: string }[]
+      return [] as { id: number; name: string }[]
+    },
   })
+  const customers = Array.isArray(rawCustomers) ? rawCustomers : []
 
-  const { data: projects } = useQuery({
+  const { data: rawProjects } = useQuery({
     queryKey: ['projects', {}],
-    queryFn: () => projectApi.list({}).then(r => (r.data.data as {id:number;name:string;project_type:string}[]) ?? []),
+    queryFn: async () => {
+      const res = await projectApi.list({})
+      const d = res.data?.data
+      if (Array.isArray(d)) return d as { id: number; name: string; project_type: string }[]
+      if (Array.isArray(res.data)) return res.data as { id: number; name: string; project_type: string }[]
+      return [] as { id: number; name: string; project_type: string }[]
+    },
   })
+  const projects = Array.isArray(rawProjects) ? rawProjects : []
 
   // Derived: detect project type from selected project_id
-  const selectedProject = (projects ?? []).find(p => String(p.id) === form.project_id)
+  const selectedProject = projects.find(p => String(p.id) === form.project_id)
   const projectType = selectedProject?.project_type as 'residential' | 'commercial' | undefined
 
   // ── Dependent: clusters (only when residential project selected) ─────────────
-  const { data: clusters } = useQuery({
+  const { data: rawClusters } = useQuery({
     queryKey: ['clusters', form.project_id],
-    queryFn: () => form.project_id
-      ? hierarchyApi.listClusters({ project_id: form.project_id }).then(r => (r.data.data as {id:number;name:string}[]) ?? [])
-      : Promise.resolve([]),
+    queryFn: async () => {
+      if (!form.project_id) return []
+      const res = await hierarchyApi.listClusters({ project_id: form.project_id })
+      const d = res.data?.data
+      return Array.isArray(d) ? (d as { id: number; name: string }[]) : []
+    },
     enabled: !!form.project_id && projectType === 'residential',
   })
+  const clusters = Array.isArray(rawClusters) ? rawClusters : []
 
   // ── Dependent: blocks ────────────────────────────────────────────────────────
-  const { data: blocks } = useQuery({
+  const { data: rawBlocks } = useQuery({
     queryKey: ['blocks', form.cluster_id],
-    queryFn: () => form.cluster_id
-      ? hierarchyApi.listBlocks({ cluster_id: form.cluster_id }).then(r => (r.data.data as {id:number;name:string}[]) ?? [])
-      : Promise.resolve([]),
+    queryFn: async () => {
+      if (!form.cluster_id) return []
+      const res = await hierarchyApi.listBlocks({ cluster_id: form.cluster_id })
+      const d = res.data?.data
+      return Array.isArray(d) ? (d as { id: number; name: string }[]) : []
+    },
     enabled: !!form.cluster_id,
   })
+  const blocks = Array.isArray(rawBlocks) ? rawBlocks : []
 
   // ── Dependent: lots ──────────────────────────────────────────────────────────
-  const { data: lots } = useQuery({
+  const { data: rawLots } = useQuery({
     queryKey: ['lots', form.block_id],
-    queryFn: () => form.block_id
-      ? hierarchyApi.listLots({ block_id: form.block_id }).then(r => (r.data.data as {id:number;name?:string;lot_number:string;area:string|null}[]) ?? [])
-      : Promise.resolve([]),
+    queryFn: async () => {
+      if (!form.block_id) return []
+      const res = await hierarchyApi.listLots({ block_id: form.block_id })
+      const d = res.data?.data
+      return Array.isArray(d) ? (d as { id: number; name?: string; lot_number: string; area: string | null }[]) : []
+    },
     enabled: !!form.block_id,
   })
+  const lots = Array.isArray(rawLots) ? rawLots : []
 
   // ── IPL rates filtered by project ────────────────────────────────────────────
-  const { data: iplRates } = useQuery({
+  const { data: rawIplRates } = useQuery({
     queryKey: ['ipl-rates', form.project_id],
-    queryFn: () => form.project_id
-      ? pricingApi.listIplRates({ project_id: form.project_id }).then(r => (r.data.data as {id:number;name:string;rate_per_sqm:string}[]) ?? [])
-      : Promise.resolve([]),
+    queryFn: async () => {
+      if (!form.project_id) return []
+      const res = await pricingApi.listIplRates({ project_id: form.project_id })
+      const d = res.data?.data
+      return Array.isArray(d) ? (d as { id: number; name: string; rate_per_sqm: string }[]) : []
+    },
     enabled: !!form.project_id,
   })
+  const iplRates = Array.isArray(rawIplRates) ? rawIplRates : []
 
   // ── Water rate groups filtered by project ────────────────────────────────────
-  const { data: waterGroups } = useQuery({
+  const { data: rawWaterGroups } = useQuery({
     queryKey: ['water-rate-groups', form.project_id],
-    queryFn: () => form.project_id
-      ? pricingApi.listWaterGroups({ project_id: form.project_id }).then(r => (r.data.data as {id:number;name:string;abonemen:string}[]) ?? [])
-      : Promise.resolve([]),
+    queryFn: async () => {
+      if (!form.project_id) return []
+      const res = await pricingApi.listWaterGroups({ project_id: form.project_id })
+      const d = res.data?.data
+      return Array.isArray(d) ? (d as { id: number; name: string; abonemen: string }[]) : []
+    },
     enabled: !!form.project_id,
   })
+  const waterGroups = Array.isArray(rawWaterGroups) ? rawWaterGroups : []
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const saveMutation = useMutation({

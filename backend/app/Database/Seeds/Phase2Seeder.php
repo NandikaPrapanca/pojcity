@@ -11,11 +11,11 @@ class Phase2Seeder extends Seeder
         $now = date('Y-m-d H:i:s');
 
         // ── 1. Company ────────────────────────────────────────────────────────
-        $companyExists = $this->db->table('companies')
+        $companyRow = $this->db->table('companies')
             ->where('name', 'PT Integrasi Prasarana Lingkungan')
-            ->countAllResults();
+            ->get()->getRowArray();
 
-        if (!$companyExists) {
+        if (!$companyRow) {
             $this->db->table('companies')->insert([
                 'name'       => 'PT Integrasi Prasarana Lingkungan',
                 'address'    => 'Jl. Poj City No.1, Semarang, Jawa Tengah',
@@ -25,10 +25,10 @@ class Phase2Seeder extends Seeder
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+            $companyId = (int)$this->db->insertID();
+        } else {
+            $companyId = (int)$companyRow['id'];
         }
-        $companyId = $this->db->table('companies')
-            ->where('name', 'PT Integrasi Prasarana Lingkungan')
-            ->get()->getRowArray()['id'];
 
         // ── 2. Projects ───────────────────────────────────────────────────────
         $projects = [
@@ -48,8 +48,8 @@ class Phase2Seeder extends Seeder
         }
         $projectIds = [];
         foreach ($projects as $p) {
-            $projectIds[$p['name']] = $this->db->table('projects')
-                ->where('name', $p['name'])->get()->getRowArray()['id'];
+            $pRow = $this->db->table('projects')->where('name', $p['name'])->get()->getRowArray();
+            $projectIds[$p['name']] = $pRow ? (int)$pRow['id'] : null;
         }
 
         // ── 3. Clusters (Ibiza only) ──────────────────────────────────────────
@@ -64,9 +64,10 @@ class Phase2Seeder extends Seeder
                     'updated_at' => $now,
                 ]);
             }
-            $clusterIds[$c] = $this->db->table('clusters')
+            $cRow = $this->db->table('clusters')
                 ->where('name', $c)->where('project_id', $projectIds['Ibiza'])
-                ->get()->getRowArray()['id'];
+                ->get()->getRowArray();
+            $clusterIds[$c] = $cRow ? (int)$cRow['id'] : null;
         }
 
         // ── 4. Blocks ─────────────────────────────────────────────────────────
@@ -86,9 +87,10 @@ class Phase2Seeder extends Seeder
                     'updated_at' => $now,
                 ]);
             }
-            $blockIds[$b['name']] = $this->db->table('blocks')
+            $bRow = $this->db->table('blocks')
                 ->where('name', $b['name'])->where('cluster_id', $cid)
-                ->get()->getRowArray()['id'];
+                ->get()->getRowArray();
+            $blockIds[$b['name']] = $bRow ? (int)$bRow['id'] : null;
         }
 
         // ── 5. Lots ───────────────────────────────────────────────────────────
@@ -101,6 +103,7 @@ class Phase2Seeder extends Seeder
             ['block' => 'Blok B1', 'lot_number' => 'B1-01', 'area' => 200.00],
             ['block' => 'Blok B1', 'lot_number' => 'B1-02', 'area' => 240.00],
         ];
+        $lotIds = [];
         foreach ($lotsData as $l) {
             $bid = $blockIds[$l['block']];
             if (!$this->db->table('lots')->where('lot_number', $l['lot_number'])->where('block_id', $bid)->countAllResults()) {
@@ -112,6 +115,8 @@ class Phase2Seeder extends Seeder
                     'updated_at' => $now,
                 ]);
             }
+            $lRow = $this->db->table('lots')->where('lot_number', $l['lot_number'])->where('block_id', $bid)->get()->getRowArray();
+            $lotIds[$l['lot_number']] = $lRow ? (int)$lRow['id'] : null;
         }
 
         // ── 6. IPL Rates ──────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ class Phase2Seeder extends Seeder
             ['project' => 'Ibiza',    'name' => 'Khusus 50%',   'rate_per_sqm' => 2250.00, 'effective_date' => '2024-01-01'],
             ['project' => 'Mall 23',  'name' => 'Standar',      'rate_per_sqm' => 8000.00, 'effective_date' => '2024-01-01'],
         ];
+        $iplRateIds = [];
         foreach ($iplRates as $r) {
             $pid = $projectIds[$r['project']];
             if (!$this->db->table('ipl_rates')
@@ -133,6 +139,8 @@ class Phase2Seeder extends Seeder
                     'updated_at'     => $now,
                 ]);
             }
+            $rRow = $this->db->table('ipl_rates')->where('project_id', $pid)->where('name', $r['name'])->get()->getRowArray();
+            $iplRateIds[$r['project'] . '_' . $r['name']] = $rRow ? (int)$rRow['id'] : null;
         }
 
         // ── 7. Water Rate Group + Tiers (Ibiza) ───────────────────────────────
@@ -146,24 +154,27 @@ class Phase2Seeder extends Seeder
                 'updated_at' => $now,
             ]);
         }
-        $groupId = $this->db->table('water_rate_groups')
+        $wgRow = $this->db->table('water_rate_groups')
             ->where('project_id', $projectIds['Ibiza'])->where('name', 'Grup Standar Ibiza')
-            ->get()->getRowArray()['id'];
+            ->get()->getRowArray();
+        $groupId = $wgRow ? (int)$wgRow['id'] : null;
 
         $tiers = [
             ['min_usage' => 0,  'max_usage' => 20, 'rate_per_m3' => 7500.00],
             ['min_usage' => 20, 'max_usage' => 40, 'rate_per_m3' => 8500.00],
             ['min_usage' => 40, 'max_usage' => null,'rate_per_m3' => 9500.00],
         ];
-        foreach ($tiers as $t) {
-            if (!$this->db->table('water_rate_tiers')
-                ->where('water_rate_group_id', $groupId)
-                ->where('min_usage', $t['min_usage'])->countAllResults()) {
-                $this->db->table('water_rate_tiers')->insert(array_merge($t, [
-                    'water_rate_group_id' => $groupId,
-                    'created_at'          => $now,
-                    'updated_at'          => $now,
-                ]));
+        if ($groupId) {
+            foreach ($tiers as $t) {
+                if (!$this->db->table('water_rate_tiers')
+                    ->where('water_rate_group_id', $groupId)
+                    ->where('min_usage', $t['min_usage'])->countAllResults()) {
+                    $this->db->table('water_rate_tiers')->insert(array_merge($t, [
+                        'water_rate_group_id' => $groupId,
+                        'created_at'          => $now,
+                        'updated_at'          => $now,
+                    ]));
+                }
             }
         }
 
@@ -200,11 +211,11 @@ class Phase2Seeder extends Seeder
 
         // ── 10. Customers ─────────────────────────────────────────────────────
         $customers = [
-            ['name' => 'Ariyan Hendrata',              'customer_type' => 'individual',  'whatsapp' => '081234567890'],
-            ['name' => 'Yunita Wijaya',                 'customer_type' => 'individual',  'whatsapp' => '081234567891'],
-            ['name' => 'Dewi Marliana',                 'customer_type' => 'individual',  'whatsapp' => '081234567892'],
-            ['name' => 'PT Swarna Kanaka Parigrahaan', 'customer_type' => 'pt',           'whatsapp' => '081234567893'],
-            ['name' => 'BINUS University',              'customer_type' => 'institution', 'whatsapp' => '081234567894'],
+            ['name' => 'Ariyan Hendrata',              'customer_type' => 'individual',  'whatsapp' => '081234567890', 'email' => 'ariyan@example.com'],
+            ['name' => 'Yunita Wijaya',                 'customer_type' => 'individual',  'whatsapp' => '081234567891', 'email' => 'yunita@example.com'],
+            ['name' => 'Dewi Marliana',                 'customer_type' => 'individual',  'whatsapp' => '081234567892', 'email' => 'dewi@example.com'],
+            ['name' => 'PT Swarna Kanaka Parigrahaan', 'customer_type' => 'pt',           'whatsapp' => '081234567893', 'email' => 'finance@swarna.co.id'],
+            ['name' => 'BINUS University',              'customer_type' => 'institution', 'whatsapp' => '081234567894', 'email' => 'facility@binus.edu'],
         ];
         $customerIds = [];
         foreach ($customers as $c) {
@@ -215,8 +226,8 @@ class Phase2Seeder extends Seeder
                     'updated_at' => $now,
                 ]));
             }
-            $customerIds[$c['name']] = $this->db->table('customers')
-                ->where('name', $c['name'])->get()->getRowArray()['id'];
+            $cRow = $this->db->table('customers')->where('name', $c['name'])->get()->getRowArray();
+            $customerIds[$c['name']] = $cRow ? (int)$cRow['id'] : null;
         }
 
         // ── 11. PICs ──────────────────────────────────────────────────────────
@@ -238,7 +249,7 @@ class Phase2Seeder extends Seeder
         ];
         foreach ($picsData as $p) {
             $cid = $customerIds[$p['customer']];
-            if (!$this->db->table('pics')
+            if ($cid && !$this->db->table('pics')
                 ->where('customer_id', $cid)->where('name', $p['name'])->countAllResults()) {
                 $this->db->table('pics')->insert([
                     'customer_id' => $cid,
@@ -249,6 +260,67 @@ class Phase2Seeder extends Seeder
                     'created_at'  => $now,
                     'updated_at'  => $now,
                 ]);
+            }
+        }
+
+        // ── 12. Ownerships ────────────────────────────────────────────────────
+        $ownershipsData = [
+            [
+                'customer_id'         => $customerIds['Ariyan Hendrata'] ?? 1,
+                'project_id'          => $projectIds['Ibiza'] ?? 1,
+                'cluster_id'          => $clusterIds['Cluster A'] ?? 1,
+                'block_id'            => $blockIds['Blok A1'] ?? 1,
+                'lot_id'              => $lotIds['A1-01'] ?? 1,
+                'billing_address'     => 'Ibiza Cluster A Blok A1 No. A1-01, Semarang',
+                'area'                => 120.00,
+                'ipl_rate_id'         => $iplRateIds['Ibiza_Standar'] ?? 1,
+                'water_rate_group_id' => $groupId,
+                'ownership_type'      => 'residential',
+                'start_date'          => '2024-01-01',
+                'notes'               => 'Demo data unit Ariyan',
+            ],
+            [
+                'customer_id'         => $customerIds['Yunita Wijaya'] ?? 2,
+                'project_id'          => $projectIds['Ibiza'] ?? 1,
+                'cluster_id'          => $clusterIds['Cluster A'] ?? 1,
+                'block_id'            => $blockIds['Blok A1'] ?? 1,
+                'lot_id'              => $lotIds['A1-02'] ?? 2,
+                'billing_address'     => 'Ibiza Cluster A Blok A1 No. A1-02, Semarang',
+                'area'                => 120.00,
+                'ipl_rate_id'         => $iplRateIds['Ibiza_Standar'] ?? 1,
+                'water_rate_group_id' => $groupId,
+                'ownership_type'      => 'residential',
+                'start_date'          => '2024-01-01',
+                'notes'               => 'Demo data unit Yunita',
+            ],
+            [
+                'customer_id'         => $customerIds['BINUS University'] ?? 5,
+                'project_id'          => $projectIds['BINUS University'] ?? 3,
+                'cluster_id'          => null,
+                'block_id'            => null,
+                'lot_id'              => null,
+                'billing_address'     => 'Kawasan Kampus BINUS Semarang',
+                'area'                => 5000.00,
+                'ipl_rate_id'         => $iplRateIds['Ibiza_Standar'] ?? 1,
+                'water_rate_group_id' => null,
+                'ownership_type'      => 'commercial',
+                'start_date'          => '2024-01-01',
+                'notes'               => 'Gedung Kampus BINUS Semarang',
+            ],
+        ];
+
+        foreach ($ownershipsData as $own) {
+            $exists = $this->db->table('ownerships')
+                ->where('customer_id', $own['customer_id'])
+                ->where('project_id', $own['project_id'])
+                ->where('deleted_at IS NULL')
+                ->countAllResults();
+
+            if (!$exists) {
+                $this->db->table('ownerships')->insert(array_merge($own, [
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]));
             }
         }
 

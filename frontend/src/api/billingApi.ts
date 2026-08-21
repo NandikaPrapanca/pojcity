@@ -27,6 +27,19 @@ export interface IplGeneratePayload {
   notes?: string | null
 }
 
+/**
+ * Payload for the dedicated Water generation endpoint.
+ * The backend loads the latest meter reading and derives progressive tier
+ * costs + abonemen from the ownership's water_rate_group_id.
+ * The frontend must NOT perform any calculation.
+ */
+export interface WaterGeneratePayload {
+  ownership_id: number
+  billing_period_start: string
+  billing_period_end: string
+  notes?: string | null
+}
+
 export const billingApi = {
   list: (params?: Record<string, unknown>) => api.get('/billing-items', { params }),
   get: (id: number) => api.get(`/billing-items/${id}`),
@@ -35,4 +48,6 @@ export const billingApi = {
   delete: (id: number) => api.delete(`/billing-items/${id}`),
   /** POST /billing/generate-ipl — authoritative IPL generation from ownership config */
   generateIpl: (data: IplGeneratePayload) => api.post('/billing/generate-ipl', data),
+  /** POST /billing/generate-water — authoritative Water generation: progressive tiers + abonemen */
+  generateWater: (data: WaterGeneratePayload) => api.post('/billing/generate-water', data),
 }

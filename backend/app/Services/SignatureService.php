@@ -64,7 +64,9 @@ class SignatureService
             $data['signature_path'] = $uploadResult['path'];
         }
 
-        $this->model->update($id, $data);
+        if (!empty($data)) {
+            $this->model->update($id, $data);
+        }
         return ['success' => true, 'error' => null, 'data' => $this->model->find($id)];
     }
 

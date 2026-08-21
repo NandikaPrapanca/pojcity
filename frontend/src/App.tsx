@@ -17,6 +17,7 @@ import SignaturePage from '@/pages/master/SignaturePage'
 import OwnershipPage from '@/pages/ownership/OwnershipPage'
 import MeterReadingPage from '@/pages/meter/MeterReadingPage'
 import BillingPage from '@/pages/billing/BillingPage'
+import InvoicePage from '@/pages/invoice/InvoicePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,9 @@ export default function App() {
 
               {/* Phase 5A — Billing Foundation */}
               <Route path="/billing" element={<BillingPage />} />
+
+              {/* Phase 6/7 — Invoice Generation */}
+              <Route path="/invoice" element={<InvoicePage />} />
             </Route>
           </Route>
 

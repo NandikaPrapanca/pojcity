@@ -69,6 +69,8 @@ interface OwnershipOption {
   ipl_rate_id?: number | null
   ipl_rate_name?: string | null
   ipl_rate_per_sqm?: string | number | null
+  water_rate_group_id?: number | null
+  water_rate_group_name?: string | null
 }
 
 interface IplGenForm {
@@ -79,6 +81,20 @@ interface IplGenForm {
 }
 
 const emptyIplForm: IplGenForm = {
+  ownership_id: '',
+  billing_period_start: '',
+  billing_period_end: '',
+  notes: '',
+}
+
+interface WaterGenForm {
+  ownership_id: string
+  billing_period_start: string
+  billing_period_end: string
+  notes: string
+}
+
+const emptyWaterForm: WaterGenForm = {
   ownership_id: '',
   billing_period_start: '',
   billing_period_end: '',
@@ -187,6 +203,13 @@ export default function BillingPage() {
   const [iplServerError, setIplServerError] = useState<string | null>(null)
   const [iplSuccess, setIplSuccess] = useState<BillingItem | null>(null)
 
+  // ─── Generate Water Modal State ─────────────────────────────────────────────
+  const [waterModal, setWaterModal] = useState(false)
+  const [waterForm, setWaterForm] = useState<WaterGenForm>(emptyWaterForm)
+  const [waterErrors, setWaterErrors] = useState<Record<string, string>>({})
+  const [waterServerError, setWaterServerError] = useState<string | null>(null)
+  const [waterSuccess, setWaterSuccess] = useState<BillingItem | null>(null)
+
   // Form State
   const [form, setForm] = useState<FormState>(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -257,6 +280,27 @@ export default function BillingPage() {
     },
   })
 
+  // ─── Generate Water Mutation ────────────────────────────────────────────────
+  const generateWaterMutation = useMutation({
+    mutationFn: async () => {
+      return billingApi.generateWater({
+        ownership_id: Number(waterForm.ownership_id),
+        billing_period_start: waterForm.billing_period_start,
+        billing_period_end: waterForm.billing_period_end,
+        notes: waterForm.notes.trim() || null,
+      })
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['billing-items'] })
+      setWaterSuccess(res.data.data as BillingItem)
+      setWaterServerError(null)
+    },
+    onError: (err: unknown) => {
+      const errorObj = err as { response?: { data?: { message?: string } } }
+      setWaterServerError(errorObj.response?.data?.message || 'Gagal melakukan generate tagihan Air.')
+    },
+  })
+
   // ─── Generate IPL Mutation ───────────────────────────────────────────────────
   const generateIplMutation = useMutation({
     mutationFn: async () => {
@@ -277,6 +321,57 @@ export default function BillingPage() {
       setIplServerError(errorObj.response?.data?.message || 'Gagal melakukan generate tagihan IPL.')
     },
   })
+
+  // ─── Generate Water Handlers ─────────────────────────────────────────────────
+
+  const openWaterModal = () => {
+    setWaterForm(emptyWaterForm)
+    setWaterErrors({})
+    setWaterServerError(null)
+    setWaterSuccess(null)
+    setWaterModal(true)
+  }
+
+  const closeWaterModal = () => {
+    setWaterModal(false)
+    setWaterForm(emptyWaterForm)
+    setWaterErrors({})
+    setWaterServerError(null)
+    setWaterSuccess(null)
+  }
+
+  // Ownerships eligible for water billing (must have a water_rate_group_id)
+  const waterEligibleOwnerships = (ownerships || []).filter(
+    (o) => o.water_rate_group_id != null
+  )
+
+  const selectedWaterOwnership = waterEligibleOwnerships.find(
+    (o) => String(o.id) === waterForm.ownership_id
+  )
+
+  const handleWaterGenerate = (e: React.FormEvent) => {
+    e.preventDefault()
+    setWaterServerError(null)
+    const errs: Record<string, string> = {}
+
+    if (!waterForm.ownership_id) errs.ownership_id = 'Kepemilikan wajib dipilih.'
+    if (!waterForm.billing_period_start) errs.billing_period_start = 'Tanggal awal periode wajib diisi.'
+    if (!waterForm.billing_period_end) errs.billing_period_end = 'Tanggal akhir periode wajib diisi.'
+    if (
+      waterForm.billing_period_start &&
+      waterForm.billing_period_end &&
+      waterForm.billing_period_end <= waterForm.billing_period_start
+    ) {
+      errs.billing_period_end = 'Tanggal akhir harus lebih besar dari tanggal awal.'
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setWaterErrors(errs)
+      return
+    }
+    setWaterErrors({})
+    generateWaterMutation.mutate()
+  }
 
   // ─── Generate IPL Handlers ───────────────────────────────────────────────────
 
@@ -487,22 +582,43 @@ export default function BillingPage() {
         addLabel="+ Tambah Manual"
       />
 
-      {/* ─── Generate IPL Quick Action Banner ────────────────────────────── */}
-      <div style={styles.iplBanner}>
-        <div style={styles.iplBannerLeft}>
-          <div style={styles.iplBannerTitle}>⚡ Generate Tagihan IPL</div>
-          <div style={styles.iplBannerDesc}>
-            Hitung otomatis: Luas Area × Tarif IPL dari konfigurasi Kepemilikan.
-            Backend adalah sumber kebenaran — tarif tidak bisa diubah manual.
+      {/* ─── Generate Quick Action Banners ──────────────────────────────── */}
+      <div style={styles.bannerRow}>
+        {/* IPL Banner */}
+        <div style={styles.iplBanner}>
+          <div style={styles.iplBannerLeft}>
+            <div style={styles.iplBannerTitle}>⚡ Generate Tagihan IPL</div>
+            <div style={styles.iplBannerDesc}>
+              Hitung otomatis: Luas Area × Tarif IPL dari konfigurasi Kepemilikan.
+              Backend adalah sumber kebenaran — tarif tidak bisa diubah manual.
+            </div>
           </div>
+          <Button
+            id="btn-generate-ipl"
+            variant="primary"
+            onClick={openIplModal}
+          >
+            Generate Tagihan IPL
+          </Button>
         </div>
-        <Button
-          id="btn-generate-ipl"
-          variant="primary"
-          onClick={openIplModal}
-        >
-          Generate Tagihan IPL
-        </Button>
+
+        {/* Water Banner */}
+        <div style={styles.waterBanner}>
+          <div style={styles.iplBannerLeft}>
+            <div style={styles.waterBannerTitle}>💧 Generate Tagihan Air</div>
+            <div style={styles.iplBannerDesc}>
+              Hitung otomatis: Pemakaian Air × Tarif Progresif (tier) + Abonemen.
+              Backend membaca meter reading terbaru — tidak ada kalkulasi di frontend.
+            </div>
+          </div>
+          <Button
+            id="btn-generate-water"
+            variant="secondary"
+            onClick={openWaterModal}
+          >
+            Generate Tagihan Air
+          </Button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -1215,6 +1331,205 @@ export default function BillingPage() {
         )}
       </Modal>
 
+      {/* ─── Generate Water Modal ──────────────────────────────────────────── */}
+      <Modal
+        open={waterModal}
+        title="Generate Tagihan Air"
+        onClose={closeWaterModal}
+        width={560}
+      >
+        {/* Success result screen */}
+        {waterSuccess ? (
+          <div style={styles.iplSuccessContainer}>
+            <div style={styles.iplSuccessIcon}>✅</div>
+            <div style={styles.iplSuccessTitle}>Tagihan Air Berhasil Digenerate!</div>
+            <div style={styles.iplSuccessCard}>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Customer</span>
+                <span style={styles.iplSuccessVal}>{waterSuccess.customer_name || '-'}</span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Proyek</span>
+                <span style={styles.iplSuccessVal}>{waterSuccess.project_name || '-'}</span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Periode</span>
+                <span style={styles.iplSuccessVal}>
+                  {waterSuccess.billing_period_start} s/d {waterSuccess.billing_period_end}
+                </span>
+              </div>
+              <div style={styles.iplSuccessRow}>
+                <span style={styles.iplSuccessLabel}>Pemakaian Air</span>
+                <span style={styles.iplSuccessVal}>{formatNumber(waterSuccess.quantity)} m³</span>
+              </div>
+              <div style={{ ...styles.iplSuccessRow, ...styles.iplSuccessTotal }}>
+                <span>Subtotal (Authoritative Backend)</span>
+                <span>{formatRupiah(waterSuccess.subtotal)}</span>
+              </div>
+            </div>
+            {waterSuccess.notes && (
+              <div style={styles.iplSuccessDesc}>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Catatan:</span>{' '}
+                {waterSuccess.notes}
+              </div>
+            )}
+            <div style={styles.modalActions}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setWaterSuccess(null)
+                  setWaterForm(emptyWaterForm)
+                }}
+              >
+                Generate Lagi
+              </Button>
+              <Button variant="primary" onClick={closeWaterModal}>
+                Selesai
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleWaterGenerate} style={styles.form}>
+            {/* Server error */}
+            {waterServerError && (
+              <div style={styles.errorAlert} role="alert">
+                {waterServerError}
+              </div>
+            )}
+
+            {/* Step 1: Select Ownership (water-eligible only) */}
+            <div>
+              <label style={styles.label}>
+                Pilih Kepemilikan <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              {waterEligibleOwnerships.length === 0 ? (
+                <div style={styles.waterNoOwnershipAlert}>
+                  ⚠️ Tidak ada kepemilikan dengan konfigurasi Kelompok Tarif Air aktif.
+                  Pastikan kepemilikan sudah memiliki{' '}
+                  <strong>water_rate_group_id</strong> yang dikonfigurasi.
+                </div>
+              ) : (
+                <select
+                  id="water-ownership-select"
+                  value={waterForm.ownership_id}
+                  onChange={(e) => {
+                    setWaterForm({ ...waterForm, ownership_id: e.target.value })
+                    setWaterErrors({})
+                    setWaterServerError(null)
+                  }}
+                  style={styles.nativeSelect}
+                >
+                  <option value="">-- Pilih Kepemilikan dengan Tarif Air --</option>
+                  {waterEligibleOwnerships.map((o) => (
+                    <option key={o.id} value={String(o.id)}>
+                      {o.customer_name || 'Tanpa Nama'} —{' '}
+                      {o.ownership_type === 'residential'
+                        ? `${o.project_name || ''} (${o.cluster_name || ''} ${o.block_name || ''}/${o.lot_number || ''})`
+                        : `${o.project_name || ''} (${o.billing_address || 'Komersial'})`}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {waterErrors.ownership_id && (
+                <span style={styles.fieldError}>{waterErrors.ownership_id}</span>
+              )}
+
+              {/* Ownership water info panel — read-only, display only */}
+              {selectedWaterOwnership && (
+                <div style={styles.waterInfoPanel}>
+                  <div style={styles.iplInfoPanelTitle}>Informasi Kepemilikan</div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Customer</span>
+                    <span style={styles.iplInfoVal}>{selectedWaterOwnership.customer_name || '-'}</span>
+                  </div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Proyek</span>
+                    <span style={styles.iplInfoVal}>
+                      {selectedWaterOwnership.project_name || '-'}
+                      {selectedWaterOwnership.ownership_type === 'residential' &&
+                        selectedWaterOwnership.cluster_name
+                        ? ` · ${selectedWaterOwnership.cluster_name} ${selectedWaterOwnership.block_name || ''}/${selectedWaterOwnership.lot_number || ''}`
+                        : ''}
+                    </span>
+                  </div>
+                  <div style={styles.iplInfoRow}>
+                    <span style={styles.iplInfoLabel}>Kelompok Tarif Air</span>
+                    <span style={styles.iplInfoVal}>
+                      {selectedWaterOwnership.water_rate_group_name
+                        ? <strong>{selectedWaterOwnership.water_rate_group_name}</strong>
+                        : <span style={{ color: '#dc2626' }}>⚠️ Belum dikonfigurasi</span>
+                      }
+                    </span>
+                  </div>
+                  <div style={styles.waterInfoNotice}>
+                    💡 Backend akan membaca meter reading terbaru untuk kepemilikan ini
+                    dan menghitung tarif progresif secara otomatis.
+                    Tidak ada kalkulasi yang dilakukan di frontend.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Billing Period */}
+            <div style={styles.rowTwo}>
+              <div>
+                <label style={styles.label}>
+                  Tanggal Awal Periode <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <Input
+                  id="water-period-start"
+                  type="date"
+                  value={waterForm.billing_period_start}
+                  onChange={(e) => setWaterForm({ ...waterForm, billing_period_start: e.target.value })}
+                />
+                {waterErrors.billing_period_start && (
+                  <span style={styles.fieldError}>{waterErrors.billing_period_start}</span>
+                )}
+              </div>
+              <div>
+                <label style={styles.label}>
+                  Tanggal Akhir Periode <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <Input
+                  id="water-period-end"
+                  type="date"
+                  value={waterForm.billing_period_end}
+                  onChange={(e) => setWaterForm({ ...waterForm, billing_period_end: e.target.value })}
+                />
+                {waterErrors.billing_period_end && (
+                  <span style={styles.fieldError}>{waterErrors.billing_period_end}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Optional notes */}
+            <div>
+              <label style={styles.label}>Catatan Tambahan (Opsional)</label>
+              <Textarea
+                placeholder="Catatan internal untuk tagihan Air ini..."
+                value={waterForm.notes}
+                onChange={(e) => setWaterForm({ ...waterForm, notes: e.target.value })}
+                rows={2}
+              />
+            </div>
+
+            <div style={styles.modalActions}>
+              <Button type="button" variant="secondary" onClick={closeWaterModal}>
+                Batal
+              </Button>
+              <Button
+                id="btn-submit-generate-water"
+                type="submit"
+                variant="primary"
+                disabled={generateWaterMutation.isPending || waterEligibleOwnerships.length === 0}
+              >
+                {generateWaterMutation.isPending ? 'Memproses...' : 'Generate Tagihan Air'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* ─── Delete Confirmation Dialog ───────────────────────────────────── */}
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -1687,5 +2002,56 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     backgroundColor: '#ffffff',
     outline: 'none',
+  },
+
+  // ─── Banner row (wraps IPL + Water banners side-by-side) ───────────────────
+  bannerRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '1rem',
+  },
+
+  // ─── Generate Water styles ──────────────────────────────────────────────────
+  waterBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '1rem',
+    backgroundColor: '#eff6ff',
+    border: '1px solid #93c5fd',
+    borderRadius: '8px',
+    padding: '1rem 1.25rem',
+  },
+  waterBannerTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  waterInfoPanel: {
+    marginTop: '0.625rem',
+    backgroundColor: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.375rem',
+  },
+  waterInfoNotice: {
+    marginTop: '0.375rem',
+    fontSize: '0.75rem',
+    color: '#1d4ed8',
+    fontStyle: 'italic',
+    backgroundColor: '#dbeafe',
+    borderRadius: '4px',
+    padding: '0.375rem 0.5rem',
+  },
+  waterNoOwnershipAlert: {
+    backgroundColor: '#fef3c7',
+    border: '1px solid #fcd34d',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    fontSize: '0.875rem',
+    color: '#92400e',
   },
 }

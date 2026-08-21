@@ -27,9 +27,6 @@ class CustomerService
      */
     public function getAll(array $filters = []): array
     {
-        $perPage = (int) ($filters['per_page'] ?? 20);
-        $page    = (int) ($filters['page'] ?? 1);
-
         $builder = $this->model->builder();
         $builder->where('customers.deleted_at IS NULL');
 
@@ -45,19 +42,14 @@ class CustomerService
             $builder->where('customer_type', $filters['customer_type']);
         }
 
-        // Count total before pagination
-        $total = (clone $builder)->countAllResults(false);
+        if (!empty($filters['per_page'])) {
+            $perPage = (int) $filters['per_page'];
+            $page    = (int) ($filters['page'] ?? 1);
+            $offset  = ($page - 1) * $perPage;
+            $builder->limit($perPage, $offset);
+        }
 
-        $offset    = ($page - 1) * $perPage;
-        $customers = $builder->limit($perPage, $offset)->get()->getResultArray();
-
-        return [
-            'data'  => $customers,
-            'total' => $total,
-            'page'  => $page,
-            'per_page' => $perPage,
-            'last_page' => (int) ceil($total / $perPage),
-        ];
+        return $builder->orderBy('customers.id', 'DESC')->get()->getResultArray();
     }
 
     /**

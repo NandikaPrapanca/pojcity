@@ -80,16 +80,32 @@ export default function CustomerPage() {
   if (search) params.search = search
   if (filterType) params.customer_type = filterType
 
-  const { data, isLoading } = useQuery({
+  const { data: rawCustomers, isLoading } = useQuery({
     queryKey: ['customers', params],
-    queryFn: () => customerApi.list(params).then(r => r.data.data as Customer[]),
+    queryFn: async () => {
+      const res = await customerApi.list(params)
+      const d = res.data?.data
+      if (Array.isArray(d)) return d as Customer[]
+      if (Array.isArray(res.data)) return res.data as Customer[]
+      if (d && Array.isArray((d as any).data)) return (d as any).data as Customer[]
+      return [] as Customer[]
+    },
   })
+  const customers = Array.isArray(rawCustomers) ? rawCustomers : []
 
-  const { data: pics } = useQuery({
+  const { data: rawPics } = useQuery({
     queryKey: ['pics', expandedId],
-    queryFn: () => expandedId ? customerApi.listPics(expandedId).then(r => r.data.data as Pic[]) : Promise.resolve([]),
+    queryFn: async () => {
+      if (!expandedId) return [] as Pic[]
+      const res = await customerApi.listPics(expandedId)
+      const d = res.data?.data
+      if (Array.isArray(d)) return d as Pic[]
+      if (Array.isArray(res.data)) return res.data as Pic[]
+      return [] as Pic[]
+    },
     enabled: expandedId !== null,
   })
+  const pics = Array.isArray(rawPics) ? rawPics : []
 
   const saveMutation = useMutation({
     mutationFn: (payload: FormState) => modal.editing ? customerApi.update(modal.editing.id, payload) : customerApi.create(payload),
@@ -170,8 +186,8 @@ export default function CustomerPage() {
 
       {isLoading ? <Spinner /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {(data ?? []).length === 0 && <EmptyState message="Belum ada customer." />}
-          {(data ?? []).map(c => (
+          {customers.length === 0 && <EmptyState message="Belum ada customer." />}
+          {customers.map(c => (
             <Card key={c.id}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1 }}>
